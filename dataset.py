@@ -1,6 +1,7 @@
 import os.path as osp
 import math
 import json
+import random
 from PIL import Image
 
 import torch
@@ -10,6 +11,14 @@ import albumentations as A
 from torch.utils.data import Dataset
 from shapely.geometry import Polygon
 
+def seed_everything(seed=2022):
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)  # if use multi-GPU
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    np.random.seed(seed)
+    random.seed(seed)
 
 def cal_distance(x1, y1, x2, y2):
     '''calculate the Euclidean distance'''
@@ -196,6 +205,8 @@ def crop_img(img, vertices, labels, length):
         region      : cropped image region
         new_vertices: new vertices in cropped region
     '''
+    seed_everything()
+
     h, w = img.height, img.width
     # confirm the shortest side of image >= length
     if h >= w and w < length:
@@ -276,6 +287,8 @@ def adjust_height(img, vertices, ratio=0.2):
         img         : adjusted PIL Image
         new_vertices: adjusted vertices
     '''
+    seed_everything()
+
     ratio_h = 1 + ratio * (np.random.rand() * 2 - 1)
     old_h = img.height
     new_h = int(np.around(old_h * ratio_h))
@@ -297,6 +310,8 @@ def rotate_img(img, vertices, angle_range=10):
         img         : rotated PIL Image
         new_vertices: rotated vertices
     '''
+    seed_everything()
+
     center_x = (img.width - 1) / 2
     center_y = (img.height - 1) / 2
     angle = angle_range * (np.random.rand() * 2 - 1)
@@ -336,6 +351,8 @@ def filter_vertices(vertices, labels, ignore_under=0, drop_under=0):
 class SceneTextDataset(Dataset):
     def __init__(self, root_dir, split='train', image_size=1024, crop_size=512, color_jitter=True,
                  normalize=True):
+        seed_everything()
+
         with open(osp.join(root_dir, 'ufo/{}.json'.format(split)), 'r') as f:
             anno = json.load(f)
 
