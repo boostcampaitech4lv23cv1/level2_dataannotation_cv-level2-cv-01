@@ -25,6 +25,9 @@ from east_dataset import EASTDataset
 from dataset import SceneTextDataset
 from model import EAST
 
+import wandb
+import deteval
+
 def seed_everything(seed=2022):
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
@@ -57,6 +60,9 @@ def parse_args():
     parser.add_argument('--max_epoch', type=int, default=200)
     parser.add_argument('--save_interval', type=int, default=1)
 
+    parser.add_argument('--wandbproject', type=str, default='bc_cv01-data_annotation')
+    parser.add_argument('--wandbentity', type=str, default='bc_cv01-data_annotation')
+    
     args = parser.parse_args()
 
     if args.input_size % 32 != 0:
@@ -66,7 +72,7 @@ def parse_args():
 
 
 def do_training(random_seed, run_name, data_dir, model_dir, device, image_size, input_size, num_workers, batch_size,
-                learning_rate, max_epoch, save_interval):
+                learning_rate, max_epoch, save_interval, wandbproject, wandbentity):
 
     seed_everything(random_seed)
 
@@ -76,6 +82,29 @@ def do_training(random_seed, run_name, data_dir, model_dir, device, image_size, 
     if not osp.exists(save_dir):
         os.makedirs(save_dir)
 
+    # wandb 설정
+    wandb.init(
+            project=f'{wandbproject}',
+            entity=f'{wandbentity}',
+            name = run_name + start_time
+        )
+    wandb.config.update({"run_name": run_name,
+                         "device": device,
+                         "image_size": image_size,
+                         "input_size": input_size,
+                         "lr": learning_rate, 
+                         "channels": 16,
+                         "num_workers":num_workers,
+                         "batch_size":batch_size,
+                         "max_epoch":max_epoch,
+                         "model_dir": model_dir,
+                         "save_interval":save_interval,
+                         "seed": random_seed,
+                         "wandbproject":wandbproject,
+                         "wandbentity":wandbentity
+                         })
+    
+    
     dataset = SceneTextDataset(data_dir, split='train', image_size=image_size, crop_size=input_size)
     dataset = EASTDataset(dataset)
     num_batches = math.ceil(len(dataset) / batch_size)
@@ -111,6 +140,12 @@ def do_training(random_seed, run_name, data_dir, model_dir, device, image_size, 
                         'IoU loss': extra_info['iou_loss']
                     }
                     pbar.set_postfix(val_dict)
+                    
+                    wandb.log({"train/Loss": loss_val,
+                               "train/Cls_loss": extra_info['cls_loss'],
+                               "train/Angle_loss": extra_info['angle_loss'],
+                               "train/Iou_loss": extra_info['iou_loss'],
+                               })
 
             scheduler.step()
 
