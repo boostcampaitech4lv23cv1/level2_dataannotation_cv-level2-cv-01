@@ -1,8 +1,18 @@
+"""
+- latest checkpoint 저장 이름 변경
+- best checkpoint 저장 --> val set 이 없어서 train_loss 최소일때 저장.. 이게 맞나?
+- seed 고정
+"""
+
 import os
 import os.path as osp
+import sys
 import time
 import math
-from datetime import timedelta
+import random
+import numpy as np
+from pytz import timezone
+from datetime import datetime, timedelta
 from argparse import ArgumentParser
 
 import torch
@@ -15,10 +25,22 @@ from east_dataset import EASTDataset
 from dataset import SceneTextDataset
 from model import EAST
 
+def seed_everything(seed=2022):
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)  # if use multi-GPU
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    np.random.seed(seed)
+    random.seed(seed)
 
 def parse_args():
     parser = ArgumentParser()
 
+    # Custom args
+    parser.add_argument('--random_seed', type=int, default=2022)
+    parser.add_argument('--run_name', type=str, default='model')
+    
     # Conventional args
     parser.add_argument('--data_dir', type=str,
                         default=os.environ.get('SM_CHANNEL_TRAIN', '../input/data/ICDAR17_Korean'))
@@ -33,7 +55,7 @@ def parse_args():
     parser.add_argument('--batch_size', type=int, default=12)
     parser.add_argument('--learning_rate', type=float, default=1e-3)
     parser.add_argument('--max_epoch', type=int, default=200)
-    parser.add_argument('--save_interval', type=int, default=5)
+    parser.add_argument('--save_interval', type=int, default=1)
 
     args = parser.parse_args()
 
@@ -43,8 +65,17 @@ def parse_args():
     return args
 
 
-def do_training(data_dir, model_dir, device, image_size, input_size, num_workers, batch_size,
+def do_training(random_seed, run_name, data_dir, model_dir, device, image_size, input_size, num_workers, batch_size,
                 learning_rate, max_epoch, save_interval):
+
+    seed_everything(random_seed)
+
+    start_time = datetime.now(timezone('Asia/Seoul')).strftime('_%y%m%d_%H%M%S')
+    save_dir = osp.join(model_dir, run_name + start_time)
+
+    if not osp.exists(save_dir):
+        os.makedirs(save_dir)
+
     dataset = SceneTextDataset(data_dir, split='train', image_size=image_size, crop_size=input_size)
     dataset = EASTDataset(dataset)
     num_batches = math.ceil(len(dataset) / batch_size)
@@ -56,40 +87,58 @@ def do_training(data_dir, model_dir, device, image_size, input_size, num_workers
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     scheduler = lr_scheduler.MultiStepLR(optimizer, milestones=[max_epoch // 2], gamma=0.1)
 
+    best_loss = 999999999
+
     model.train()
-    for epoch in range(max_epoch):
-        epoch_loss, epoch_start = 0, time.time()
-        with tqdm(total=num_batches) as pbar:
-            for img, gt_score_map, gt_geo_map, roi_mask in train_loader:
-                pbar.set_description('[Epoch {}]'.format(epoch + 1))
+    with open(osp.join(save_dir, 'log.txt'), 'w') as f:
+        for epoch in range(max_epoch):
+            epoch_loss, epoch_start = 0, time.time()
+            with tqdm(total=num_batches) as pbar:
+                for img, gt_score_map, gt_geo_map, roi_mask in train_loader:
+                    pbar.set_description('[Epoch {}]'.format(epoch + 1))
 
-                loss, extra_info = model.train_step(img, gt_score_map, gt_geo_map, roi_mask)
-                optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
+                    loss, extra_info = model.train_step(img, gt_score_map, gt_geo_map, roi_mask)
+                    optimizer.zero_grad()
+                    loss.backward()
+                    optimizer.step()
 
-                loss_val = loss.item()
-                epoch_loss += loss_val
+                    loss_val = loss.item()
+                    epoch_loss += loss_val
 
-                pbar.update(1)
-                val_dict = {
-                    'Cls loss': extra_info['cls_loss'], 'Angle loss': extra_info['angle_loss'],
-                    'IoU loss': extra_info['iou_loss']
-                }
-                pbar.set_postfix(val_dict)
+                    pbar.update(1)
+                    val_dict = {
+                        'Cls loss': extra_info['cls_loss'], 'Angle loss': extra_info['angle_loss'],
+                        'IoU loss': extra_info['iou_loss']
+                    }
+                    pbar.set_postfix(val_dict)
 
-        scheduler.step()
+            scheduler.step()
 
-        print('Mean loss: {:.4f} | Elapsed time: {}'.format(
-            epoch_loss / num_batches, timedelta(seconds=time.time() - epoch_start)))
+            f.write("[EPOCH {:>03d}] Cls loss={:.4f}, Angle loss={:.4f}, IoU loss={:.4f}\n".format(
+                epoch+1, extra_info['cls_loss'], extra_info['angle_loss'], extra_info['iou_loss']))
 
-        if (epoch + 1) % save_interval == 0:
-            if not osp.exists(model_dir):
-                os.makedirs(model_dir)
+            print('Mean loss: {:.4f} | Elapsed time: {} | Logged time : {}'.format(
+                epoch_loss / num_batches, timedelta(seconds=time.time() - epoch_start), 
+                datetime.now(timezone('Asia/Seoul')).strftime('%H:%M:%S')))
+            
+            f.write('Mean loss: {:.4f} | Elapsed time: {} | Logged time : {}\n'.format(
+                epoch_loss / num_batches, timedelta(seconds=time.time() - epoch_start), 
+                datetime.now(timezone('Asia/Seoul')).strftime('%H:%M:%S')))
 
-            ckpt_fpath = osp.join(model_dir, 'latest.pth')
-            torch.save(model.state_dict(), ckpt_fpath)
+            if best_loss > epoch_loss / num_batches:
+                if not osp.exists(save_dir):
+                    os.makedirs(save_dir)
 
+                ckpt_fpath = osp.join(save_dir, 'best.pth')
+                torch.save(model.state_dict(), ckpt_fpath)
+                best_loss = epoch_loss / num_batches
+
+            if (epoch + 1) % save_interval == 0:
+                if not osp.exists(save_dir):
+                    os.makedirs(save_dir)
+
+                ckpt_fpath = osp.join(save_dir, 'latest.pth')
+                torch.save(model.state_dict(), ckpt_fpath)
 
 def main(args):
     do_training(**args.__dict__)
