@@ -263,10 +263,10 @@ def do_training(random_seed, data_dir, model_dir, device, image_size, input_size
                 torch.save(model.state_dict(), ckpt_fpath)
                 best_hmean = hmean
 
-            if best_loss > epoch_loss / num_train_batches:
+            if best_loss > epoch_loss / num_valid_batches:
                 ckpt_fpath = osp.join(save_dir, 'best_loss.pth')
                 torch.save(model.state_dict(), ckpt_fpath)
-                best_loss = epoch_loss / num_train_batches
+                best_loss = epoch_loss / num_valid_batches
 
             if (epoch + 1) % save_interval == 0:
                 ckpt_fpath = osp.join(save_dir, 'latest.pth')
