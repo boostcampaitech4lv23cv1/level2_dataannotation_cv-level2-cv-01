@@ -8,7 +8,6 @@
 
 import os
 import os.path as osp
-import sys
 import time
 import math
 import json
@@ -28,8 +27,10 @@ from tqdm import tqdm
 from east_dataset import EASTDataset
 from dataset import SceneTextDataset
 from model import EAST
+from loss import EASTLoss
 from detect import get_bboxes
 from deteval import calc_deteval_metrics
+
 
 def seed_everything(seed=2022):
     torch.manual_seed(seed)
@@ -39,6 +40,18 @@ def seed_everything(seed=2022):
     torch.backends.cudnn.benchmark = False
     np.random.seed(seed)
     random.seed(seed)
+
+
+def weight_init_(submodule):
+    if isinstance(submodule, torch.nn.Conv2d):
+        torch.nn.init.kaiming_uniform_(submodule.weight)
+        # submodule.weight.data.fill_(0)
+        submodule.bias.data.fill_(0)
+    # elif isinstance(submodule, torch.nn.BatchNorm2d):
+    #     submodule.weight.data.fill_(1.0)
+    #     # torch.nn.init.xavier_normal_(submodule.weight)
+    #     submodule.bias.data.zero_()
+
 
 def parse_args():
     parser = ArgumentParser()
@@ -57,9 +70,9 @@ def parse_args():
 
     parser.add_argument('--image_size', type=int, default=1024)
     parser.add_argument('--input_size', type=int, default=512)
-    parser.add_argument('--train_batch_size', type=int, default=12)
-    parser.add_argument('--valid_batch_size', type=int, default=12)
-    parser.add_argument('--learning_rate', type=float, default=1e-3)
+    parser.add_argument('--train_batch_size', type=int, default=32)
+    parser.add_argument('--valid_batch_size', type=int, default=32)
+    parser.add_argument('--learning_rate', type=float, default=1e-4)
     parser.add_argument('--max_epoch', type=int, default=200)
     parser.add_argument('--save_interval', type=int, default=1)
 
@@ -96,6 +109,7 @@ def do_training(random_seed, data_dir, model_dir, device, image_size, input_size
             entity=f'{wandb_entity}',
             name = wandb_run + start_time
         )
+
     wandb.config.update({"run_name": wandb_run,
                          "device": device,
                          "image_size": image_size,
@@ -113,7 +127,6 @@ def do_training(random_seed, data_dir, model_dir, device, image_size, input_size
                          "wandbentity":wandb_entity
                          })
     
-    
     train_dataset = SceneTextDataset(data_dir, split='train', image_size=image_size, crop_size=input_size)
     train_dataset = EASTDataset(train_dataset)
     num_train_batches = math.ceil(len(train_dataset) / train_batch_size)
@@ -126,13 +139,20 @@ def do_training(random_seed, data_dir, model_dir, device, image_size, input_size
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     model = EAST()
+    model.merge.apply(weight_init_)
+    model.output.apply(weight_init_)
     model.to(device)
+
+    criterion = EASTLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    
     scheduler = lr_scheduler.MultiStepLR(optimizer, milestones=[max_epoch // 2], gamma=0.1)
+    scaler = torch.cuda.amp.GradScaler()
 
     best_loss = 999999999
     best_hmean = -999999999
-
+    check1 = scaler.get_scale()
+    scalerlist = []
     with open(osp.join(save_dir, 'log.txt'), 'w') as f:
         for epoch in range(max_epoch):
             model.train()
@@ -141,11 +161,29 @@ def do_training(random_seed, data_dir, model_dir, device, image_size, input_size
                 for img, gt_score_map, gt_geo_map, roi_mask in train_loader:
                     pbar.set_description('[Epoch TRAIN {}]'.format(epoch + 1))
 
-                    loss, extra_info = model.train_step(img, gt_score_map, gt_geo_map, roi_mask)
                     optimizer.zero_grad()
-                    loss.backward()
-                    optimizer.step()
+                    if epoch > 5:
+                        with torch.cuda.amp.autocast():
+                            img, gt_score_map, gt_geo_map, roi_mask = (img.to(device), gt_score_map.to(device),
+                                                                        gt_geo_map.to(device), roi_mask.to(device))
+                            pred_score_map, pred_geo_map = model.forward(img)
+                            loss, values_dict = criterion(gt_score_map, pred_score_map, 
+                                                            gt_geo_map, pred_geo_map, roi_mask)
+                            extra_info = dict(**values_dict, score_map=pred_score_map, geo_map=pred_geo_map)
+                    else:
+                        img, gt_score_map, gt_geo_map, roi_mask = (img.to(device), gt_score_map.to(device),
+                                                                    gt_geo_map.to(device), roi_mask.to(device))
+                        pred_score_map, pred_geo_map = model.forward(img)
+                        loss, values_dict = criterion(gt_score_map, pred_score_map, 
+                                                        gt_geo_map, pred_geo_map, roi_mask)
+                        extra_info = dict(**values_dict, score_map=pred_score_map, geo_map=pred_geo_map)
 
+                    scaler.scale(loss).backward()
+                    scaler.step(optimizer)
+                    check2 = scaler.get_scale()
+                    scaler.update()
+                    check3 = scaler.get_scale()
+                    scalerlist.append((check2, check3))
                     loss_train = loss.item()
                     epoch_loss += loss_train
 
@@ -184,7 +222,14 @@ def do_training(random_seed, data_dir, model_dir, device, image_size, input_size
                     for img, gt_score_map, gt_geo_map, roi_mask in valid_loader:
                         pbar.set_description('[Epoch VALID {}]'.format(epoch + 1))
 
-                        loss, extra_info = model.train_step(img, gt_score_map, gt_geo_map, roi_mask)
+                        img, gt_score_map, gt_geo_map, roi_mask = (img.to(device), gt_score_map.to(device),
+                                                                   gt_geo_map.to(device), roi_mask.to(device))
+                        
+                        with torch.cuda.amp.autocast():
+                            pred_score_map, pred_geo_map = model.forward(img)
+                            loss, values_dict = criterion(gt_score_map, pred_score_map, 
+                                                          gt_geo_map, pred_geo_map, roi_mask)
+                            extra_info = dict(**values_dict, score_map=pred_score_map, geo_map=pred_geo_map)
 
                         loss_valid = loss.item()
                         epoch_loss += loss_valid
@@ -196,7 +241,7 @@ def do_training(random_seed, data_dir, model_dir, device, image_size, input_size
                         for i in img:
                             orig_sizes.append(i.shape[1:3])
                         
-                        for gt_score, gt_geo, pred_score, pred_geo, orig_size in zip(gt_score_map.numpy(), gt_geo_map.numpy(), extra_info['score_map'].cpu().numpy(), extra_info['geo_map'].cpu().numpy(), orig_sizes):
+                        for gt_score, gt_geo, pred_score, pred_geo, orig_size in zip(gt_score_map.cpu().numpy(), gt_geo_map.cpu().numpy(), extra_info['score_map'].cpu().numpy(), extra_info['geo_map'].cpu().numpy(), orig_sizes):
                             gt_bbox_angle = get_bboxes(gt_score, gt_geo)
                             pred_bbox_angle = get_bboxes(pred_score, pred_geo)
                             if gt_bbox_angle is None:
@@ -271,6 +316,7 @@ def do_training(random_seed, data_dir, model_dir, device, image_size, input_size
             if (epoch + 1) % save_interval == 0:
                 ckpt_fpath = osp.join(save_dir, 'latest.pth')
                 torch.save(model.state_dict(), ckpt_fpath)
+
 
 def main(args):
     do_training(**args.__dict__)
