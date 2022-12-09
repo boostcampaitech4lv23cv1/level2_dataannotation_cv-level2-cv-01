@@ -21,7 +21,7 @@ from argparse import ArgumentParser
 
 import torch
 from torch import cuda
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, ConcatDataset
 from torch.optim import lr_scheduler
 from tqdm import tqdm
 
@@ -48,7 +48,9 @@ def parse_args():
     
     # Conventional args
     parser.add_argument('--data_dir', type=str,
-                        default=os.environ.get('SM_CHANNEL_TRAIN', '../input/data/ICDAR17_Korean'))
+                        default=os.environ.get('SM_CHANNEL_TRAIN', '../input/data'))
+    parser.add_argument('--data_format', nargs = '+', type=str, default='ICDAR17_Korean')
+
     parser.add_argument('--model_dir', type=str, default=os.environ.get('SM_MODEL_DIR',
                                                                         'trained_models'))
 
@@ -75,7 +77,7 @@ def parse_args():
     return args
 
 
-def do_training(random_seed, data_dir, model_dir, device, image_size, input_size, num_workers, 
+def do_training(random_seed, data_dir, data_format, model_dir, device, image_size, input_size, num_workers, 
                 train_batch_size, valid_batch_size,
                 learning_rate, max_epoch, save_interval, wandb_project, wandb_entity, wandb_run):
 
@@ -113,13 +115,28 @@ def do_training(random_seed, data_dir, model_dir, device, image_size, input_size
                          "wandbentity":wandb_entity
                          })
     
-    
-    train_dataset = SceneTextDataset(data_dir, split='train', image_size=image_size, crop_size=input_size)
+    if len(data_format) == 1:
+        root_dir = osp.join(data_dir, data_format[0])
+        train_dataset = SceneTextDataset(root_dir, split='train_fold0', image_size=image_size, crop_size=input_size)
+        valid_dataset = SceneTextDataset(root_dir, split='valid_fold0', image_size=image_size, crop_size=input_size)
+    elif len(data_format) == 0:
+        raise ValueError
+    else:
+        train_dataset_list = []
+        valid_dataset_list = []
+        for format in data_format:
+            root_dir = osp.join(data_dir, format)
+            train_dataset_list.append(SceneTextDataset(root_dir, split='train_fold0', image_size=image_size, crop_size=input_size))
+            valid_dataset_list.append(SceneTextDataset(root_dir, split='valid_fold0', image_size=image_size, crop_size=input_size))
+        train_dataset = ConcatDataset(train_dataset_list)
+        valid_dataset = ConcatDataset(valid_dataset_list)
+
+    # train_dataset = SceneTextDataset(data_dir, split='train_fold0', image_size=image_size, crop_size=input_size)
     train_dataset = EASTDataset(train_dataset)
     num_train_batches = math.ceil(len(train_dataset) / train_batch_size)
     train_loader = DataLoader(train_dataset, batch_size=train_batch_size, shuffle=True, num_workers=num_workers)
 
-    valid_dataset = SceneTextDataset(data_dir, split='train', image_size=image_size, crop_size=input_size)
+    # valid_dataset = SceneTextDataset(data_dir, split='valid_fold0', image_size=image_size, crop_size=input_size)
     valid_dataset = EASTDataset(valid_dataset)
     num_valid_batches = math.ceil(len(valid_dataset) / valid_batch_size)
     valid_loader = DataLoader(valid_dataset, batch_size=valid_batch_size, shuffle=True, num_workers=num_workers)

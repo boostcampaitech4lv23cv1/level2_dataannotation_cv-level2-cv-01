@@ -225,16 +225,23 @@ def crop_img(img, vertices, labels, length):
     # find random position
     remain_h = img.height - length
     remain_w = img.width - length
+
     flag = True
-    cnt = 0
-    while flag and cnt < 1000:
-        cnt += 1
+
+    if len(labels) == 0:
         start_w = int(np.random.rand() * remain_w)
         start_h = int(np.random.rand() * remain_h)
-        flag = is_cross_text([start_w, start_h], length, new_vertices[labels==1,:])
+        flag = False
+    else:
+        cnt = 0
+        while flag and cnt < 1000:
+            cnt += 1
+            start_w = int(np.random.rand() * remain_w)
+            start_h = int(np.random.rand() * remain_h)
+            flag = is_cross_text([start_w, start_h], length, new_vertices[labels==1,:])
     
-    if flag:
-        print('WARNING! Cropped image crosses word regions!')
+    # if flag:
+    #     print('WARNING! Cropped image crosses word regions!')
 
     box = (start_w, start_h, start_w + length, start_h + length)
     region = img.crop(box)
@@ -376,7 +383,15 @@ class SceneTextDataset(Dataset):
 
         vertices, labels = [], []
         for word_info in self.anno['images'][image_fname]['words'].values():
-            vertices.append(np.array(word_info['points']).flatten())
+            ver = word_info['points']
+            ver_flat = np.array(ver).flatten()
+            if len(ver_flat) != 8:
+                x_min = np.array(ver)[:, 0].min()
+                y_min = np.array(ver)[:, 1].min()
+                x_max = np.array(ver)[:, 0].max()
+                y_max = np.array(ver)[:, 1].max()
+                ver_flat = np.array([x_min, y_max, x_max, y_max, x_max, y_min, x_min, y_min])
+            vertices.append(ver_flat)
             labels.append(int(not word_info['illegibility']))
         vertices, labels = np.array(vertices, dtype=np.float32), np.array(labels, dtype=np.int64)
 
