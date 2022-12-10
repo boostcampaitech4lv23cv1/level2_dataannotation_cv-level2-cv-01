@@ -21,7 +21,7 @@ from argparse import ArgumentParser
 
 import torch
 from torch import cuda
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, ConcatDataset
 from torch.optim import lr_scheduler
 from tqdm import tqdm
 
@@ -48,7 +48,7 @@ def parse_args():
     
     # Conventional args
     parser.add_argument('--data_dir', type=str,
-                        default=os.environ.get('SM_CHANNEL_TRAIN', '../input/data/ICDAR17_Korean'))
+                        default=os.environ.get('SM_CHANNEL_TRAIN', '../input/data/ICDAR19'))
     parser.add_argument('--model_dir', type=str, default=os.environ.get('SM_MODEL_DIR',
                                                                         'trained_models'))
 
@@ -66,6 +66,8 @@ def parse_args():
     parser.add_argument('--wandb_project', type=str, default='bc_cv01-data_annotation')
     parser.add_argument('--wandb_entity', type=str, default='bc_cv01-data_annotation')
     parser.add_argument('--wandb_run', type=str, default='model')
+
+    parser.add_argument('--languages', nargs='+')
     
     args = parser.parse_args()
 
@@ -77,7 +79,7 @@ def parse_args():
 
 def do_training(random_seed, data_dir, model_dir, device, image_size, input_size, num_workers, 
                 train_batch_size, valid_batch_size,
-                learning_rate, max_epoch, save_interval, wandb_project, wandb_entity, wandb_run):
+                learning_rate, max_epoch, save_interval, wandb_project, wandb_entity, wandb_run,languages):
 
     seed_everything(random_seed)
 
@@ -112,14 +114,28 @@ def do_training(random_seed, data_dir, model_dir, device, image_size, input_size
                          "wandbproject":wandb_project,
                          "wandbentity":wandb_entity
                          })
-    
-    
-    train_dataset = SceneTextDataset(data_dir, split='train', image_size=image_size, crop_size=input_size)
+    train_concat = []; valid_concat = []
+    ldict = {'ar':'Arabic', 'lt':'Latin','no':'None','sy':"Symbols",'cn':'Chinese',
+            'mx':'Mixed', 'jp':'Japanese','ko':'Korean','bg':'Bangla','hd':'Hindi'}
+    for l in languages:
+        lang = ldict[l]
+        t_dataset = SceneTextDataset(data_dir, split=f'ICDAR19_{lang}_train_fold0',image_size=image_size, crop_size=input_size)
+        train_concat.append(t_dataset)
+        v_dataset = SceneTextDataset(data_dir, split=f'ICDAR19_{lang}_valid_fold0',image_size=image_size, crop_size=input_size)
+        valid_concat.append(v_dataset)
+
+
+    train_dataset = ConcatDataset(train_concat)
+
+    # train_dataset = SceneTextDataset(data_dir, split='train', image_size=image_size, crop_size=input_size)
     train_dataset = EASTDataset(train_dataset)
     num_train_batches = math.ceil(len(train_dataset) / train_batch_size)
     train_loader = DataLoader(train_dataset, batch_size=train_batch_size, shuffle=True, num_workers=num_workers)
+    
 
-    valid_dataset = SceneTextDataset(data_dir, split='train', image_size=image_size, crop_size=input_size)
+    valid_dataset = ConcatDataset(valid_concat)
+
+    # valid_dataset = SceneTextDataset(data_dir, split='train', image_size=image_size, crop_size=input_size)
     valid_dataset = EASTDataset(valid_dataset)
     num_valid_batches = math.ceil(len(valid_dataset) / valid_batch_size)
     valid_loader = DataLoader(valid_dataset, batch_size=valid_batch_size, shuffle=True, num_workers=num_workers)
