@@ -232,9 +232,6 @@ def crop_img(img, vertices, labels, length):
         start_w = int(np.random.rand() * remain_w)
         start_h = int(np.random.rand() * remain_h)
         flag = is_cross_text([start_w, start_h], length, new_vertices[labels==1,:])
-    
-    if flag:
-        print('WARNING! Cropped image crosses word regions!')
 
     box = (start_w, start_h, start_w + length, start_h + length)
     region = img.crop(box)
