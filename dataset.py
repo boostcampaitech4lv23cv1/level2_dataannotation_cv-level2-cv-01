@@ -373,7 +373,15 @@ class SceneTextDataset(Dataset):
 
         vertices, labels = [], []
         for word_info in self.anno['images'][image_fname]['words'].values():
-            vertices.append(np.array(word_info['points']).flatten())
+            ver = word_info['points']
+            ver_flat = np.array(ver).flatten()
+            if len(ver_flat) != 8:
+                x_min = np.array(ver)[:, 0].min()
+                y_min = np.array(ver)[:, 1].min()
+                x_max = np.array(ver)[:, 0].max()
+                y_max = np.array(ver)[:, 1].max()
+                ver_flat = np.array([x_min, y_max, x_max, y_max, x_max, y_min, x_min, y_min])
+            vertices.append(ver_flat)
             labels.append(int(not word_info['illegibility']))
         vertices, labels = np.array(vertices, dtype=np.float32), np.array(labels, dtype=np.int64)
 
