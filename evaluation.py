@@ -24,9 +24,9 @@ def parse_args():
     parser = ArgumentParser()
 
     # Conventional args
-    parser.add_argument('--data_dir', default='ICDAR17_Korean')
-    parser.add_argument('--gt_dir', default='/opt/ml/input/data/ICDAR17_Korean/json/ICDAR17_total.json')
-    parser.add_argument('--model_dir', default='ICDAR2017total_default_BAEK_221210_150242/latest.pth')
+    parser.add_argument('--data_dir', default='upstage')
+    parser.add_argument('--gt_dir', default='/opt/ml/input/data/upstage/ufo/annotation.json')
+    parser.add_argument('--model_dir', default='ICDAR17_latest.pth')
     parser.add_argument('--output_dir', default='/opt/ml/level2_dataannotation_cv-level2-cv-01/evaluations')
 
     parser.add_argument('--device', default='cuda' if cuda.is_available() else 'cpu')
@@ -77,7 +77,7 @@ def main(args):
     image_fname, by_sample_bboxes = do_evaluation(model, ckpt_fpath, args.data_dir, args.input_size, args.batch_size)
     
     
-    gt = json.load(open(os.path.join('/opt/ml/input/data',args.data_dir,'json/ICDAR17_total.json')))
+    gt = json.load(open(os.path.join('/opt/ml/input/data',args.data_dir,'ufo/annotation.json')))
 
     by_sample_gt = []
     trans = []
@@ -117,33 +117,35 @@ def main(args):
     
     fig, axes = plt.subplots(4,4,figsize=(30,30))
 
-    for i, (image_fname, hmean, pred_bbox, gt_bbox) in enumerate(result[:12]+result[-4:]):
-        img = cv2.imread(os.path.join('/opt/ml/input/data',args.data_dir,'images',f'{image_fname}'))
-        for bbox in pred_bbox:
-            points = np.array([[int(p[0]),int(p[1])] for p in bbox])
+    for num in range(5):
+        for i, (image_fname, hmean, pred_bbox, gt_bbox) in enumerate(result[:12]+result[-4:]):
+            img = cv2.imread(os.path.join('/opt/ml/input/data',args.data_dir,'images',f'{image_fname}'))
+            for bbox in pred_bbox:
+                points = np.array([[int(p[0]),int(p[1])] for p in bbox])
 
-            img = cv2.polylines(img, [points], True, (0,0,225), 3)
-            cv2.putText(img,f"pred:{hmean} | 0",(points[0][0],points[0][1]-10), cv2.FONT_HERSHEY_SIMPLEX, 2, (0,0,255), 2)
-            cv2.putText(img,"1",(points[1][0],points[1][1]-10), cv2.FONT_HERSHEY_SIMPLEX, 2, (0,0,255), 2)
-            cv2.putText(img,"2",(points[2][0],points[2][1]-10), cv2.FONT_HERSHEY_SIMPLEX, 2, (0,0,255), 2)
-            cv2.putText(img,"3",(points[3][0],points[3][1]-10), cv2.FONT_HERSHEY_SIMPLEX, 2, (0,0,255), 2)
+                img = cv2.polylines(img, [points], True, (0,0,225), 3)
+                cv2.putText(img,f"pred:{hmean} | 0",(points[0][0],points[0][1]-10), cv2.FONT_HERSHEY_SIMPLEX, 2, (0,0,255), 2)
+                cv2.putText(img,"1",(points[1][0],points[1][1]-10), cv2.FONT_HERSHEY_SIMPLEX, 2, (0,0,255), 2)
+                cv2.putText(img,"2",(points[2][0],points[2][1]-10), cv2.FONT_HERSHEY_SIMPLEX, 2, (0,0,255), 2)
+                cv2.putText(img,"3",(points[3][0],points[3][1]-10), cv2.FONT_HERSHEY_SIMPLEX, 2, (0,0,255), 2)
 
-        for bbox in gt_bbox:
-            points = np.array([[int(p[0]),int(p[1])] for p in bbox])
+            for bbox in gt_bbox:
+                points = np.array([[int(p[0]),int(p[1])] for p in bbox])
 
-            img = cv2.polylines(img, [points], True, (0,255,225), 3)
-            cv2.putText(img,"gt | 0",(points[0][0],points[0][1]-10), cv2.FONT_HERSHEY_SIMPLEX, 2, (0,255,255), 2)
-            cv2.putText(img,"1",(points[1][0],points[1][1]-10), cv2.FONT_HERSHEY_SIMPLEX, 2, (0,255,255), 2)
-            cv2.putText(img,"2",(points[2][0],points[2][1]-10), cv2.FONT_HERSHEY_SIMPLEX, 2, (0,255,255), 2)
-            cv2.putText(img,"3",(points[3][0],points[3][1]-10), cv2.FONT_HERSHEY_SIMPLEX, 2, (0,255,255), 2)
+                img = cv2.polylines(img, [points], True, (0,255,225), 3)
+                cv2.putText(img,"gt | 0",(points[0][0],points[0][1]-10), cv2.FONT_HERSHEY_SIMPLEX, 2, (0,255,255), 2)
+                cv2.putText(img,"1",(points[1][0],points[1][1]-10), cv2.FONT_HERSHEY_SIMPLEX, 2, (0,255,255), 2)
+                cv2.putText(img,"2",(points[2][0],points[2][1]-10), cv2.FONT_HERSHEY_SIMPLEX, 2, (0,255,255), 2)
+                cv2.putText(img,"3",(points[3][0],points[3][1]-10), cv2.FONT_HERSHEY_SIMPLEX, 2, (0,255,255), 2)
 
-        axes[i//4,i%4].set_title(f'{image_fname} | {hmean}')
-        axes[i//4,i%4].plot()
-        axes[i//4,i%4].imshow(cv2.cvtColor(img, cv2.COLOR_RGB2BGR))
-        axes[i//4,i%4].axis('off')
+            axes[i//4,i%4].set_title(f'{image_fname} | {hmean}')
+            axes[i//4,i%4].plot()
+            axes[i//4,i%4].imshow(cv2.cvtColor(img, cv2.COLOR_RGB2BGR))
+            axes[i//4,i%4].axis('off')
 
-    fig.tight_layout()
-    plt.savefig(os.path.join(args.output_dir,f'{args.data_dir}_viz.jpg'))
+        fig.tight_layout()
+        plt.savefig(os.path.join(args.output_dir,f'{args.data_dir}_viz_{num}.jpg'))
+        result = result[12:-4]
 
 
 if __name__ == '__main__':
