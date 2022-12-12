@@ -441,6 +441,9 @@ class SceneTextDataset(Dataset):
                      A.Normalize(), ToTensorV2()]
             transform = A.Compose(funcs)
 
+        else:
+            raise ValueError
+
         image = transform(image=image)['image']
         word_bboxes = np.reshape(vertices, (-1, 4, 2))
         roi_mask = generate_roi_mask(image, vertices, labels)
