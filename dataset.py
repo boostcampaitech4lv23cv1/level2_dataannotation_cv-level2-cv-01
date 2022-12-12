@@ -351,7 +351,7 @@ def filter_vertices(vertices, labels, ignore_under=0, drop_under=0):
 
 class SceneTextDataset(Dataset):
     def __init__(self, root_dir, split='train', image_size=1024, crop_size=512, color_jitter=True,
-                 normalize=True):
+                 normalize=True,pin_memory=True):
         seed_everything()
 
         with open(osp.join(root_dir, 'ufo/{}.json'.format(split)), 'r') as f:

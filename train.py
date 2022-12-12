@@ -48,7 +48,7 @@ def parse_args():
     
     # Conventional args
     parser.add_argument('--data_dir', type=str,
-                        default=os.environ.get('SM_CHANNEL_TRAIN', '../input/data/ICDAR19'))
+                        default=os.environ.get('SM_CHANNEL_TRAIN', '../input/data'))
     parser.add_argument('--model_dir', type=str, default=os.environ.get('SM_MODEL_DIR',
                                                                         'trained_models'))
 
@@ -68,6 +68,7 @@ def parse_args():
     parser.add_argument('--wandb_run', type=str, default='model')
 
     parser.add_argument('--languages', nargs='+')
+    parser.add_argument('--synthetic', nargs='+')
     
     args = parser.parse_args()
 
@@ -79,7 +80,7 @@ def parse_args():
 
 def do_training(random_seed, data_dir, model_dir, device, image_size, input_size, num_workers, 
                 train_batch_size, valid_batch_size,
-                learning_rate, max_epoch, save_interval, wandb_project, wandb_entity, wandb_run,languages):
+                learning_rate, max_epoch, save_interval, wandb_project, wandb_entity, wandb_run,languages, synthetic):
 
     seed_everything(random_seed)
 
@@ -115,26 +116,45 @@ def do_training(random_seed, data_dir, model_dir, device, image_size, input_size
                          "wandbentity":wandb_entity
                          })
 
-    
-    if languages:
-        train_concat = []; valid_concat = []
-        ldict = {'ar':'Arabic', 'en':'Latin','no':'None','sy':"Symbols",'cn':'Chinese',
-            'mx':'Mixed', 'jp':'Japanese','ko':'Korean','bg':'Bangla','hd':'Hindi','tt':'Total'}
+    train_concat = []; valid_concat = []
+    ldict = {'ar':'Arabic', 'en':'Latin','no':'None','sy':"Symbols",'cn':'Chinese',
+            'mx':'Mixed', 'jp':'Japanese','ko':'Korean','bg':'Bangla','hd':'Hindi',
+            'synko': 'Synthetic_Korean', 'synen': 'Synthetic_Latin','tt':'Total'}    
+
+
+
+    if languages: 
         for l in languages:
             lang = ldict[l]
 
-            t_dataset = SceneTextDataset(data_dir, split=f'ICDAR19_{lang}_train_fold0',image_size=image_size, crop_size=input_size)
+            t_dataset = SceneTextDataset(f'{data_dir}/ICDAR19', split=f'ICDAR19_{lang}_train_fold0',image_size=image_size, crop_size=input_size)
             train_concat.append(t_dataset)
             
-            v_dataset = SceneTextDataset(data_dir, split=f'ICDAR19_{lang}_valid_fold0',image_size=image_size, crop_size=input_size)
+            v_dataset = SceneTextDataset(f'{data_dir}/ICDAR19', split=f'ICDAR19_{lang}_valid_fold0',image_size=image_size, crop_size=input_size)
             valid_concat.append(v_dataset)
 
     
             train_dataset = ConcatDataset(train_concat)
             valid_dataset = ConcatDataset(valid_concat)
+
+    elif synthetic:
+        for s in synthetic:
+            syn = ldict[s]
+            t_dataset = SceneTextDataset(f'{data_dir}/ICDAR19_Synthetic', split=f'ICDAR19_{syn}_div_by_5',image_size=image_size, crop_size=input_size)
+            train_concat.append(t_dataset)
+            
+            v_dataset = SceneTextDataset(f'{data_dir}/upstage', split='annotation',image_size=image_size, crop_size=input_size)
+            valid_concat.append(v_dataset)
+
+    
+            train_dataset = ConcatDataset(train_concat)
+            valid_dataset = ConcatDataset(valid_concat)
+
     else:
         train_dataset = SceneTextDataset(data_dir, split='train', image_size=image_size, crop_size=input_size)
         valid_dataset = SceneTextDataset(data_dir, split='train', image_size=image_size, crop_size=input_size)
+
+    
     
 
     train_dataset = EASTDataset(train_dataset)
@@ -148,6 +168,7 @@ def do_training(random_seed, data_dir, model_dir, device, image_size, input_size
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     model = EAST()
+    # model.load_state_dict(torch.load('./trained_models/ICDAR2019total_YOON_221211_125630/latest.pth', map_location='cpu'))
     model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     scheduler = lr_scheduler.MultiStepLR(optimizer, milestones=[max_epoch // 2], gamma=0.1)
