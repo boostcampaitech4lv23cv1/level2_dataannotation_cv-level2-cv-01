@@ -8,8 +8,11 @@ import torch
 import numpy as np
 import cv2
 import albumentations as A
+from albumentations.pytorch import ToTensorV2
+from albumentations.augmentations.geometric.resize import LongestMaxSize
 from torch.utils.data import Dataset
 from shapely.geometry import Polygon
+
 
 def seed_everything(seed=2022):
     torch.manual_seed(seed)
@@ -228,17 +231,23 @@ def crop_img(img, vertices, labels, length):
 
     flag = True
 
-    if len(labels) == 0:
+    # if len(labels) == 0:
+    #     start_w = int(np.random.rand() * remain_w)
+    #     start_h = int(np.random.rand() * remain_h)
+    #     flag = False
+    # else:
+    #     cnt = 0
+    #     while flag and cnt < 1000:
+    #         cnt += 1
+    #         start_w = int(np.random.rand() * remain_w)
+    #         start_h = int(np.random.rand() * remain_h)
+    #         flag = is_cross_text([start_w, start_h], length, new_vertices[labels==1,:])
+    cnt = 0
+    while flag and cnt < 1000:
+        cnt += 1
         start_w = int(np.random.rand() * remain_w)
         start_h = int(np.random.rand() * remain_h)
-        flag = False
-    else:
-        cnt = 0
-        while flag and cnt < 1000:
-            cnt += 1
-            start_w = int(np.random.rand() * remain_w)
-            start_h = int(np.random.rand() * remain_h)
-            flag = is_cross_text([start_w, start_h], length, new_vertices[labels==1,:])
+        flag = is_cross_text([start_w, start_h], length, new_vertices[labels==1,:])
     
     # if flag:
     #     print('WARNING! Cropped image crosses word regions!')
@@ -370,6 +379,7 @@ class SceneTextDataset(Dataset):
         self.anno = anno
         self.image_fnames = sorted(anno['images'].keys())
         self.image_dir = osp.join(root_dir, 'images')
+        self.split = split
 
         self.image_size, self.crop_size = image_size, crop_size
         self.color_jitter, self.normalize = color_jitter, normalize
@@ -395,24 +405,41 @@ class SceneTextDataset(Dataset):
             labels.append(int(not word_info['illegibility']))
         vertices, labels = np.array(vertices, dtype=np.float32), np.array(labels, dtype=np.int64)
 
-        vertices, labels = filter_vertices(vertices, labels, ignore_under=10, drop_under=1)
+        if 'train' in self.split:
 
-        image = Image.open(image_fpath)
-        image, vertices = resize_img(image, vertices, self.image_size)
-        image, vertices = adjust_height(image, vertices)
-        image, vertices = rotate_img(image, vertices)
-        image, vertices = crop_img(image, vertices, labels, self.crop_size)
+            vertices, labels = filter_vertices(vertices, labels, ignore_under=10, drop_under=1)
 
-        if image.mode != 'RGB':
-            image = image.convert('RGB')
-        image = np.array(image)
+            image = Image.open(image_fpath)
+            image, vertices = resize_img(image, vertices, self.image_size)
+            image, vertices = adjust_height(image, vertices)
+            image, vertices = rotate_img(image, vertices)
+            image, vertices = crop_img(image, vertices, labels, self.crop_size)
 
-        funcs = []
-        if self.color_jitter:
-            funcs.append(A.ColorJitter(0.5, 0.5, 0.5, 0.25))
-        if self.normalize:
-            funcs.append(A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)))
-        transform = A.Compose(funcs)
+            if image.mode != 'RGB':
+                image = image.convert('RGB')
+            image = np.array(image)
+
+            funcs = []
+            if self.color_jitter:
+                funcs.append(A.ColorJitter(0.5, 0.5, 0.5, 0.25))
+            if self.normalize:
+                funcs.append(A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)))
+            transform = A.Compose(funcs)
+        
+        elif 'valid' in self.split:
+
+            vertices, labels = filter_vertices(vertices, labels, ignore_under=0, drop_under=0)
+
+            image = Image.open(image_fpath)
+
+            if image.mode != 'RGB':
+                image = image.convert('RGB')
+            image = np.array(image)
+
+            funcs = [LongestMaxSize(1024), 
+                     A.PadIfNeeded(min_height=1024, min_width=1024, position=A.PadIfNeeded.PositionType.TOP_LEFT),
+                     A.Normalize(), ToTensorV2()]
+            transform = A.Compose(funcs)
 
         image = transform(image=image)['image']
         word_bboxes = np.reshape(vertices, (-1, 4, 2))

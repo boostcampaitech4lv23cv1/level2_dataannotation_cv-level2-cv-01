@@ -158,6 +158,9 @@ def do_training(random_seed, data_dir, data_format, model_dir, device, image_siz
                 for img, gt_score_map, gt_geo_map, roi_mask in train_loader:
                     pbar.set_description('[Epoch TRAIN {}]'.format(epoch + 1))
 
+                    if torch.sum(gt_score_map) < 1:
+                        continue
+
                     loss, extra_info = model.train_step(img, gt_score_map, gt_geo_map, roi_mask)
                     optimizer.zero_grad()
                     loss.backward()
@@ -200,6 +203,9 @@ def do_training(random_seed, data_dir, data_format, model_dir, device, image_siz
                 with tqdm(total=num_valid_batches) as pbar:
                     for img, gt_score_map, gt_geo_map, roi_mask in valid_loader:
                         pbar.set_description('[Epoch VALID {}]'.format(epoch + 1))
+
+                        if torch.sum(gt_score_map) < 1:
+                            continue
 
                         loss, extra_info = model.train_step(img, gt_score_map, gt_geo_map, roi_mask)
 
