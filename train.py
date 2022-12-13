@@ -48,7 +48,7 @@ def parse_args():
     
     # Conventional args
     parser.add_argument('--data_dir', type=str,
-                        default=os.environ.get('SM_CHANNEL_TRAIN', '../input/data/ICDAR17_Korean'))
+                        default=os.environ.get('SM_CHANNEL_TRAIN', '../input/data/upstage'))
     parser.add_argument('--model_dir', type=str, default=os.environ.get('SM_MODEL_DIR',
                                                                         'trained_models'))
 
@@ -57,8 +57,8 @@ def parse_args():
 
     parser.add_argument('--image_size', type=int, default=1024)
     parser.add_argument('--input_size', type=int, default=512)
-    parser.add_argument('--train_batch_size', type=int, default=12)
-    parser.add_argument('--valid_batch_size', type=int, default=12)
+    parser.add_argument('--train_batch_size', type=int, default=32)
+    parser.add_argument('--valid_batch_size', type=int, default=32)
     parser.add_argument('--learning_rate', type=float, default=1e-3)
     parser.add_argument('--max_epoch', type=int, default=200)
     parser.add_argument('--save_interval', type=int, default=1)
@@ -119,13 +119,17 @@ def do_training(random_seed, data_dir, model_dir, device, image_size, input_size
     num_train_batches = math.ceil(len(train_dataset) / train_batch_size)
     train_loader = DataLoader(train_dataset, batch_size=train_batch_size, shuffle=True, num_workers=num_workers)
 
-    valid_dataset = SceneTextDataset(data_dir, split='train', image_size=image_size, crop_size=input_size)
+    valid_dataset = SceneTextDataset(data_dir, split='valid', image_size=image_size, crop_size=input_size)
     valid_dataset = EASTDataset(valid_dataset)
     num_valid_batches = math.ceil(len(valid_dataset) / valid_batch_size)
     valid_loader = DataLoader(valid_dataset, batch_size=valid_batch_size, shuffle=True, num_workers=num_workers)
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     model = EAST()
+    
+    model.load_state_dict(torch.load('/opt/ml/code/trained_models/ICDAR17_ICDAR19_TOTAL_valid_UPSTAGE_JUN_221212_150622/best_loss.pth', 
+                                     map_location='cpu'))
+    
     model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     scheduler = lr_scheduler.MultiStepLR(optimizer, milestones=[max_epoch // 2], gamma=0.1)
