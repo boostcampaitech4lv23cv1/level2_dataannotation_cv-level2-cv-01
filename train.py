@@ -126,7 +126,7 @@ def do_training(random_seed, data_dir, model_dir, device, image_size, input_size
         for l in languages:
             lang = ldict[l]
 
-            t_dataset = SceneTextDataset(f'{data_dir}/ICDAR19', split=f'ICDAR19_{lang}_train_fold0',image_size=image_size, crop_size=input_size)
+            t_dataset = SceneTextDataset(f'{data_dir}/ICDAR19', split=f'ICDAR19_{lang}.json',image_size=image_size, crop_size=input_size)
             train_concat.append(t_dataset)
 
             train_dataset = ConcatDataset(train_concat)
@@ -135,7 +135,7 @@ def do_training(random_seed, data_dir, model_dir, device, image_size, input_size
     elif synthetic:
         for s in synthetic:
             syn = ldict[s]
-            
+
             t_dataset = SceneTextDataset(f'{data_dir}/ICDAR19_Synthetic', split=f'ICDAR19_{syn}_div_by_5',image_size=image_size, crop_size=input_size)
             train_concat.append(t_dataset)
 
