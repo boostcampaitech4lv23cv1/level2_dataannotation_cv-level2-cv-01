@@ -126,7 +126,7 @@ def do_training(random_seed, data_dir, model_dir, device, image_size, input_size
         for l in languages:
             lang = ldict[l]
 
-            t_dataset = SceneTextDataset(f'{data_dir}/ICDAR19', split=f'ICDAR19_{lang}.json',image_size=image_size, crop_size=input_size)
+            t_dataset = SceneTextDataset(f'{data_dir}/ICDAR19', split=f'ICDAR19_{lang}',image_size=image_size, crop_size=input_size)
             train_concat.append(t_dataset)
 
             train_dataset = ConcatDataset(train_concat)
@@ -160,7 +160,7 @@ def do_training(random_seed, data_dir, model_dir, device, image_size, input_size
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     model = EAST()
-    # model.load_state_dict(torch.load('./trained_models/ICDAR2019total_YOON_221211_125630/latest.pth', map_location='cpu'))
+    model.load_state_dict(torch.load('./trained_models/ICDAR2019synko_ICDAR2019synen_divided_by_5_YOON_221213_023546/latest.pth', map_location='cpu'))
     model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     scheduler = lr_scheduler.MultiStepLR(optimizer, milestones=[max_epoch // 2], gamma=0.1)
