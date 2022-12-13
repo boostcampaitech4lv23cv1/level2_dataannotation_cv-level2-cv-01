@@ -116,11 +116,10 @@ def do_training(random_seed, data_dir, model_dir, device, image_size, input_size
                          "wandbentity":wandb_entity
                          })
 
-    train_concat = []; valid_concat = []
+    train_concat = []
     ldict = {'ar':'Arabic', 'en':'Latin','no':'None','sy':"Symbols",'cn':'Chinese',
             'mx':'Mixed', 'jp':'Japanese','ko':'Korean','bg':'Bangla','hd':'Hindi',
             'synko': 'Synthetic_Korean', 'synen': 'Synthetic_Latin','tt':'Total'}    
-
 
 
     if languages: 
@@ -129,31 +128,24 @@ def do_training(random_seed, data_dir, model_dir, device, image_size, input_size
 
             t_dataset = SceneTextDataset(f'{data_dir}/ICDAR19', split=f'ICDAR19_{lang}_train_fold0',image_size=image_size, crop_size=input_size)
             train_concat.append(t_dataset)
-            
-            v_dataset = SceneTextDataset(f'{data_dir}/ICDAR19', split=f'ICDAR19_{lang}_valid_fold0',image_size=image_size, crop_size=input_size)
-            valid_concat.append(v_dataset)
 
-    
             train_dataset = ConcatDataset(train_concat)
-            valid_dataset = ConcatDataset(valid_concat)
+            
 
     elif synthetic:
         for s in synthetic:
             syn = ldict[s]
+            
             t_dataset = SceneTextDataset(f'{data_dir}/ICDAR19_Synthetic', split=f'ICDAR19_{syn}_div_by_5',image_size=image_size, crop_size=input_size)
             train_concat.append(t_dataset)
-            
-            v_dataset = SceneTextDataset(f'{data_dir}/upstage', split='annotation',image_size=image_size, crop_size=input_size)
-            valid_concat.append(v_dataset)
 
-    
             train_dataset = ConcatDataset(train_concat)
-            valid_dataset = ConcatDataset(valid_concat)
 
     else:
         train_dataset = SceneTextDataset(data_dir, split='train', image_size=image_size, crop_size=input_size)
-        valid_dataset = SceneTextDataset(data_dir, split='train', image_size=image_size, crop_size=input_size)
+        
 
+    valid_dataset = SceneTextDataset(f'{data_dir}/upstage', split='annotation',image_size=image_size, crop_size=input_size)
     
     
 
