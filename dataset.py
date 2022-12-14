@@ -196,8 +196,11 @@ def is_cross_text(start_loc, length, vertices):
             return True
     return False
 
+############## exp ##############
+#################################
 
-def crop_img(img, vertices, labels, length):
+
+def center_crop_img(img, vertices, labels, length):
     '''crop img patches to obtain batch and augment
     Input:
         img         : PIL Image
@@ -211,6 +214,9 @@ def crop_img(img, vertices, labels, length):
     seed_everything()
 
     h, w = img.height, img.width
+    
+    cnt_box = np.shape(vertices)[0]
+    
     # confirm the shortest side of image >= length
     if h >= w and w < length:
         img = img.resize((length, int(h * length / w)), Image.BILINEAR)
@@ -228,29 +234,20 @@ def crop_img(img, vertices, labels, length):
     # find random position
     remain_h = img.height - length
     remain_w = img.width - length
-
     flag = True
-
-    # if len(labels) == 0:
-    #     start_w = int(np.random.rand() * remain_w)
-    #     start_h = int(np.random.rand() * remain_h)
-    #     flag = False
-    # else:
-    #     cnt = 0
-    #     while flag and cnt < 1000:
-    #         cnt += 1
-    #         start_w = int(np.random.rand() * remain_w)
-    #         start_h = int(np.random.rand() * remain_h)
-    #         flag = is_cross_text([start_w, start_h], length, new_vertices[labels==1,:])
     cnt = 0
     while flag and cnt < 1000:
         cnt += 1
-        start_w = int(np.random.rand() * remain_w)
-        start_h = int(np.random.rand() * remain_h)
+        random_box_idx = np.random.randint(cnt_box)
+        x_center_point = vertices[random_box_idx][0] + (vertices[random_box_idx][2] - vertices[random_box_idx][0])/2
+        y_center_point = vertices[random_box_idx][1] + (vertices[random_box_idx][5] - vertices[random_box_idx][1])/2
+        
+        start_w = x_center_point - 256 if x_center_point>=256 else 0
+        start_h = y_center_point - 256 if y_center_point>=256 else 0
+        
+        # start_w = int(np.random.rand() * remain_w)
+        # start_h = int(np.random.rand() * remain_h)
         flag = is_cross_text([start_w, start_h], length, new_vertices[labels==1,:])
-    
-    # if flag:
-    #     print('WARNING! Cropped image crosses word regions!')
 
     box = (start_w, start_h, start_w + length, start_h + length)
     region = img.crop(box)
@@ -260,6 +257,70 @@ def crop_img(img, vertices, labels, length):
     new_vertices[:,[0,2,4,6]] -= start_w
     new_vertices[:,[1,3,5,7]] -= start_h
     return region, new_vertices
+
+# def crop_img(img, vertices, labels, length):
+#     '''crop img patches to obtain batch and augment
+#     Input:
+#         img         : PIL Image
+#         vertices    : vertices of text regions <numpy.ndarray, (n,8)>
+#         labels      : 1->valid, 0->ignore, <numpy.ndarray, (n,)>
+#         length      : length of cropped image region
+#     Output:
+#         region      : cropped image region
+#         new_vertices: new vertices in cropped region
+#     '''
+#     seed_everything()
+
+#     h, w = img.height, img.width
+#     # confirm the shortest side of image >= length
+#     if h >= w and w < length:
+#         img = img.resize((length, int(h * length / w)), Image.BILINEAR)
+#     elif h < w and h < length:
+#         img = img.resize((int(w * length / h), length), Image.BILINEAR)
+#     ratio_w = img.width / w
+#     ratio_h = img.height / h
+#     assert(ratio_w >= 1 and ratio_h >= 1)
+
+#     new_vertices = np.zeros(vertices.shape)
+#     if vertices.size > 0:
+#         new_vertices[:,[0,2,4,6]] = vertices[:,[0,2,4,6]] * ratio_w
+#         new_vertices[:,[1,3,5,7]] = vertices[:,[1,3,5,7]] * ratio_h
+
+#     # find random position
+#     remain_h = img.height - length
+#     remain_w = img.width - length
+
+#     flag = True
+
+#     # if len(labels) == 0:
+#     #     start_w = int(np.random.rand() * remain_w)
+#     #     start_h = int(np.random.rand() * remain_h)
+#     #     flag = False
+#     # else:
+#     #     cnt = 0
+#     #     while flag and cnt < 1000:
+#     #         cnt += 1
+#     #         start_w = int(np.random.rand() * remain_w)
+#     #         start_h = int(np.random.rand() * remain_h)
+#     #         flag = is_cross_text([start_w, start_h], length, new_vertices[labels==1,:])
+#     cnt = 0
+#     while flag and cnt < 1000:
+#         cnt += 1
+#         start_w = int(np.random.rand() * remain_w)
+#         start_h = int(np.random.rand() * remain_h)
+#         flag = is_cross_text([start_w, start_h], length, new_vertices[labels==1,:])
+    
+#     # if flag:
+#     #     print('WARNING! Cropped image crosses word regions!')
+
+#     box = (start_w, start_h, start_w + length, start_h + length)
+#     region = img.crop(box)
+#     if new_vertices.size == 0:
+#         return region, new_vertices
+
+#     new_vertices[:,[0,2,4,6]] -= start_w
+#     new_vertices[:,[1,3,5,7]] -= start_h
+#     return region, new_vertices
 
 
 def rotate_all_pixels(rotate_mat, anchor_x, anchor_y, length):
@@ -393,59 +454,32 @@ class SceneTextDataset(Dataset):
 
         vertices, labels = [], []
         for word_info in self.anno['images'][image_fname]['words'].values():
-            ver = word_info['points']
-            ver_flat = np.array(ver).flatten()
-            if len(ver_flat) != 8:
-                x_min = np.array(ver)[:, 0].min()
-                y_min = np.array(ver)[:, 1].min()
-                x_max = np.array(ver)[:, 0].max()
-                y_max = np.array(ver)[:, 1].max()
-                ver_flat = np.array([x_min, y_max, x_max, y_max, x_max, y_min, x_min, y_min])
-            vertices.append(ver_flat)
+            vertices.append(np.array(word_info['points']).flatten())
             labels.append(int(not word_info['illegibility']))
         vertices, labels = np.array(vertices, dtype=np.float32), np.array(labels, dtype=np.int64)
 
-        if 'train' in self.split:
+        vertices, labels = filter_vertices(vertices, labels, ignore_under=10, drop_under=1)
 
-            vertices, labels = filter_vertices(vertices, labels, ignore_under=10, drop_under=1)
+        image = Image.open(image_fpath)
+        image, vertices = resize_img(image, vertices, self.image_size)
+        image, vertices = adjust_height(image, vertices)
+        image, vertices = rotate_img(image, vertices)
+        image, vertices = center_crop_img(image, vertices, labels, self.crop_size)
 
-            image = Image.open(image_fpath)
-            image, vertices = resize_img(image, vertices, self.image_size)
-            image, vertices = adjust_height(image, vertices)
-            image, vertices = rotate_img(image, vertices)
-            image, vertices = crop_img(image, vertices, labels, self.crop_size)
+        if image.mode != 'RGB':
+            image = image.convert('RGB')
+        image = np.array(image)
 
-            if image.mode != 'RGB':
-                image = image.convert('RGB')
-            image = np.array(image)
-
-            funcs = []
-            if self.color_jitter:
-                funcs.append(A.ColorJitter(0.5, 0.5, 0.5, 0.25))
-            if self.normalize:
-                funcs.append(A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)))
-            transform = A.Compose(funcs)
-        
-        elif 'valid' in self.split:
-
-            vertices, labels = filter_vertices(vertices, labels, ignore_under=0, drop_under=0)
-
-            image = Image.open(image_fpath)
-
-            if image.mode != 'RGB':
-                image = image.convert('RGB')
-            image = np.array(image)
-
-            funcs = [LongestMaxSize(1024), 
-                     A.PadIfNeeded(min_height=1024, min_width=1024, position=A.PadIfNeeded.PositionType.TOP_LEFT),
-                     A.Normalize(), ToTensorV2()]
-            transform = A.Compose(funcs)
-
-        else:
-            raise ValueError
+        funcs = []
+        if self.color_jitter:
+            funcs.append(A.ColorJitter(0.5, 0.5, 0.5, 0.25))
+        if self.normalize:
+            funcs.append(A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)))
+        transform = A.Compose(funcs)
 
         image = transform(image=image)['image']
         word_bboxes = np.reshape(vertices, (-1, 4, 2))
         roi_mask = generate_roi_mask(image, vertices, labels)
 
         return image, word_bboxes, roi_mask
+
