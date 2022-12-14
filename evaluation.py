@@ -25,8 +25,8 @@ def parse_args():
 
     # Conventional args
     parser.add_argument('--data_dir', default='/opt/ml/input/data/upstage')
-    parser.add_argument('--gt_fname', default='upstage_dense_vertical_small_horizontal_large.json')
-    parser.add_argument('--model_fname', default='ICDAR17_upstagerare_aihub_fine_tuning_baek_lr1e-4_221213_233754/best_loss.pth')
+    parser.add_argument('--gt_fname', default='upstage_rare_valid.json')
+    parser.add_argument('--model_fname', default='ICDAR17ko_en_upstage_aihub_aug_lr3e4_512_256_BAEK_221214_043327/best_loss.pth')
     parser.add_argument('--output_dir', default='/opt/ml/level2_dataannotation_cv-level2-cv-01/evaluations')
 
     parser.add_argument('--device', default='cuda' if cuda.is_available() else 'cpu')
@@ -71,8 +71,8 @@ def main(args):
     # Get paths to checkpoint files
     ckpt_fpath = os.path.join('/opt/ml/level2_dataannotation_cv-level2-cv-01/trained_models',args.model_fname)
 
-    if not osp.exists(os.path.join(args.output_dir,args.model_dir.split('/')[0])):
-        os.makedirs(os.path.join(args.output_dir,args.model_dir.split('/')[0]))
+    if not osp.exists(os.path.join(args.output_dir,args.model_fname.split('/')[0])):
+        os.makedirs(os.path.join(args.output_dir,args.model_fname.split('/')[0]))
 
     print('Evaluation in progress')
     image_fname, by_sample_bboxes = do_evaluation(model, ckpt_fpath, args.data_dir, args.gt_fname, args.input_size, args.batch_size)
@@ -145,7 +145,7 @@ def main(args):
             axes[i//4,i%4].axis('off')
 
         fig.tight_layout()
-        plt.savefig(os.path.join(args.output_dir,args.model_dir.split('/')[0],f'{args.gt_fname}_viz_{num}.jpg'))
+        plt.savefig(os.path.join(args.output_dir,args.model_fname.split('/')[0],f'{args.gt_fname}_viz_{num}.jpg'))
         result = result[12:-4]
 
 
