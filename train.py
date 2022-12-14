@@ -70,6 +70,7 @@ def parse_args():
     parser.add_argument('--languages', nargs='+')
     parser.add_argument('--synthetic', nargs='+')
     parser.add_argument('--pin_memory',action='store_false')
+    parser.add_argument('--finetune',action='store_true')
     
     args = parser.parse_args()
 
@@ -81,7 +82,7 @@ def parse_args():
 
 def do_training(random_seed, data_dir, model_dir, device, image_size, input_size, num_workers, 
                 train_batch_size, valid_batch_size,
-                learning_rate, max_epoch, save_interval, wandb_project, wandb_entity, wandb_run,languages, synthetic,pin_memory):
+                learning_rate, max_epoch, save_interval, wandb_project, wandb_entity, wandb_run,languages, synthetic,pin_memory,finetune):
 
     seed_everything(random_seed)
 
@@ -132,6 +133,7 @@ def do_training(random_seed, data_dir, model_dir, device, image_size, input_size
             train_concat.append(t_dataset)
 
             train_dataset = ConcatDataset(train_concat)
+            valid_dataset = SceneTextDataset(f'{data_dir}/upstage', split='annotation',image_size=image_size, crop_size=input_size)
             
 
     elif synthetic:
@@ -142,13 +144,19 @@ def do_training(random_seed, data_dir, model_dir, device, image_size, input_size
             train_concat.append(t_dataset)
 
             train_dataset = ConcatDataset(train_concat)
+            valid_dataset = SceneTextDataset(f'{data_dir}/upstage', split='annotation',image_size=image_size, crop_size=input_size)
+    
+
+    elif finetune:
+        icdar17_dataset = SceneTextDataset(f'{data_dir}/ICDAR17_Korean',split='ICDAR_train_fold0',image_size=image_size, crop_size=input_size)
+        upstage_dataset = SceneTextDataset(f'{data_dir}/upstage',split='UPSTAGE_train_fold0',image_size=image_size, crop_size=input_size)
+        train_dataset = ConcatDataset([icdar17_dataset,upstage_dataset])
+
+        valid_dataset = SceneTextDataset(f'{data_dir}/upstage',split='UPSTAGE_valid_fold0',image_size=image_size, crop_size=input_size)
 
     else:
         train_dataset = SceneTextDataset(data_dir, split='train', image_size=image_size, crop_size=input_size)
-        
-
-    valid_dataset = SceneTextDataset(f'{data_dir}/upstage', split='annotation',image_size=image_size, crop_size=input_size)
-    
+        valid_dataset = SceneTextDataset(f'{data_dir}/upstage', split='annotation',image_size=image_size, crop_size=input_size)
     
 
     train_dataset = EASTDataset(train_dataset)
@@ -162,7 +170,8 @@ def do_training(random_seed, data_dir, model_dir, device, image_size, input_size
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     model = EAST()
-    model.load_state_dict(torch.load('./trained_models/ICDAR17_19_ALL/best_loss.pth', map_location='cpu'))
+
+    model.load_state_dict(torch.load('./trained_models/ICDAR2019synko_ICDAR2019synen_divided_by_5_YOON_221213_023546/best_loss.pth', map_location='cpu'))
 
     
     model.to(device)
