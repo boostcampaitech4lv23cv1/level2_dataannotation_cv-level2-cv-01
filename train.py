@@ -57,8 +57,8 @@ def parse_args():
 
     parser.add_argument('--image_size', type=int, default=1024)
     parser.add_argument('--input_size', type=int, default=512)
-    parser.add_argument('--train_batch_size', type=int, default=12)
-    parser.add_argument('--valid_batch_size', type=int, default=12)
+    parser.add_argument('--train_batch_size', type=int, default=32)
+    parser.add_argument('--valid_batch_size', type=int, default=32)
     parser.add_argument('--learning_rate', type=float, default=1e-3)
     parser.add_argument('--max_epoch', type=int, default=200)
     parser.add_argument('--save_interval', type=int, default=1)
@@ -163,6 +163,8 @@ def do_training(random_seed, data_dir, model_dir, device, image_size, input_size
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     model = EAST()
     model.load_state_dict(torch.load('./trained_models/ICDAR17_19_ALL/best_loss.pth', map_location='cpu'))
+
+    
     model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     scheduler = lr_scheduler.MultiStepLR(optimizer, milestones=[max_epoch // 2], gamma=0.1)

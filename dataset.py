@@ -226,12 +226,28 @@ def crop_img(img, vertices, labels, length):
     remain_h = img.height - length
     remain_w = img.width - length
     flag = True
-    cnt = 0
-    while flag and cnt < 1000:
-        cnt += 1
+    # cnt = 0
+    # while flag and cnt < 1000:
+    #     cnt += 1
+    if len(labels) == 0:
         start_w = int(np.random.rand() * remain_w)
         start_h = int(np.random.rand() * remain_h)
+<<<<<<< HEAD
         flag = is_cross_text([start_w, start_h], length, new_vertices[labels==1,:])
+=======
+        #flag = is_cross_text([start_w, start_h], length, new_vertices[labels==1,:])
+        flag = False
+    else:
+        cnt = 0
+        while flag and cnt < 1000:
+            cnt += 1
+            start_w = int(np.random.rand() * remain_w)
+            start_h = int(np.random.rand() * remain_h)
+            flag = is_cross_text([start_w, start_h], length, new_vertices[labels==1,:])
+    
+    # if flag:
+    #     print('WARNING! Cropped image crosses word regions!')
+>>>>>>> d3de7251b20c3c96866ae5f6f20063de7c2014d5
 
     box = (start_w, start_h, start_w + length, start_h + length)
     region = img.crop(box)
@@ -374,6 +390,10 @@ class SceneTextDataset(Dataset):
 
         vertices, labels = [], []
         for word_info in self.anno['images'][image_fname]['words'].values():
+<<<<<<< HEAD
+=======
+            #vertices.append(np.array(word_info['points']).flatten())
+>>>>>>> d3de7251b20c3c96866ae5f6f20063de7c2014d5
             ver = word_info['points']
             ver_flat = np.array(ver).flatten()
             if len(ver_flat) != 8:
