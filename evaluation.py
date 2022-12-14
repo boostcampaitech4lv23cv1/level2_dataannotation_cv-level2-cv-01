@@ -24,9 +24,9 @@ def parse_args():
     parser = ArgumentParser()
 
     # Conventional args
-    parser.add_argument('--data_dir', default='upstage')
-    parser.add_argument('--gt_dir', default='/opt/ml/input/data/upstage/ufo/annotation.json')
-    parser.add_argument('--model_dir', default='ICDAR17_latest.pth')
+    parser.add_argument('--data_dir', default='/opt/ml/input/data/upstage')
+    parser.add_argument('--gt_fname', default='upstage_rare_valid.json')
+    parser.add_argument('--model_fname', default='ICDAR17ko_en_upstage_aihub_aug_lr3e4_512_256_BAEK_221214_043327/best_loss.pth')
     parser.add_argument('--output_dir', default='/opt/ml/level2_dataannotation_cv-level2-cv-01/evaluations')
 
     parser.add_argument('--device', default='cuda' if cuda.is_available() else 'cpu')
@@ -41,15 +41,16 @@ def parse_args():
     return args
 
 
-def do_evaluation(model, ckpt_fpath, data_dir, input_size, batch_size):
+def do_evaluation(model, ckpt_fpath, data_dir, gt_fname, input_size, batch_size):
     model.load_state_dict(torch.load(ckpt_fpath))
     model.eval()
 
-    image_fnames, by_sample_bboxes = [], []
-
+    by_sample_bboxes = []
     images = []
-    for image_fname in tqdm([image_fname for image_fname in os.listdir(os.path.join('/opt/ml/input/data',data_dir,'images')) if not image_fname.startswith('.')][:]):
-        image_fpath = os.path.join('/opt/ml/input/data',data_dir,'images',image_fname)
+    image_fnames = list(json.load(open(os.path.join(data_dir,'ufo',gt_fname)))['images'].keys())
+
+    for image_fname in tqdm(image_fnames[:]):
+        image_fpath = os.path.join(data_dir,'images',image_fname)
         image_fnames.append(osp.basename(image_fpath))
 
         images.append(cv2.imread(image_fpath)[:, :, ::-1])
@@ -68,16 +69,16 @@ def main(args):
     model = EAST(pretrained=False).to(args.device)
 
     # Get paths to checkpoint files
-    ckpt_fpath = os.path.join('/opt/ml/level2_dataannotation_cv-level2-cv-01/trained_models',args.model_dir)
+    ckpt_fpath = os.path.join('/opt/ml/level2_dataannotation_cv-level2-cv-01/trained_models',args.model_fname)
 
-    if not osp.exists(args.output_dir):
-        os.makedirs(args.output_dir)
+    if not osp.exists(os.path.join(args.output_dir,args.model_fname.split('/')[0])):
+        os.makedirs(os.path.join(args.output_dir,args.model_fname.split('/')[0]))
 
     print('Evaluation in progress')
-    image_fname, by_sample_bboxes = do_evaluation(model, ckpt_fpath, args.data_dir, args.input_size, args.batch_size)
+    image_fname, by_sample_bboxes = do_evaluation(model, ckpt_fpath, args.data_dir, args.gt_fname, args.input_size, args.batch_size)
     
     
-    gt = json.load(open(os.path.join('/opt/ml/input/data',args.data_dir,'ufo/annotation.json')))
+    gt = json.load(open(os.path.join(args.data_dir,'ufo',args.gt_fname)))
 
     by_sample_gt = []
     trans = []
@@ -144,7 +145,7 @@ def main(args):
             axes[i//4,i%4].axis('off')
 
         fig.tight_layout()
-        plt.savefig(os.path.join(args.output_dir,f'{args.data_dir}_viz_{num}.jpg'))
+        plt.savefig(os.path.join(args.output_dir,args.model_fname.split('/')[0],f'{args.gt_fname}_viz_{num}.jpg'))
         result = result[12:-4]
 
 
