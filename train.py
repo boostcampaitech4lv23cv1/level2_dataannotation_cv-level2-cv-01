@@ -69,6 +69,7 @@ def parse_args():
 
     parser.add_argument('--languages', nargs='+')
     parser.add_argument('--synthetic', nargs='+')
+    parser.add_argument('--pin_memory',action='store_false')
     
     args = parser.parse_args()
 
@@ -80,7 +81,7 @@ def parse_args():
 
 def do_training(random_seed, data_dir, model_dir, device, image_size, input_size, num_workers, 
                 train_batch_size, valid_batch_size,
-                learning_rate, max_epoch, save_interval, wandb_project, wandb_entity, wandb_run,languages, synthetic):
+                learning_rate, max_epoch, save_interval, wandb_project, wandb_entity, wandb_run,languages, synthetic,pin_memory):
 
     seed_everything(random_seed)
 
@@ -116,6 +117,7 @@ def do_training(random_seed, data_dir, model_dir, device, image_size, input_size
                          "wandbentity":wandb_entity
                          })
 
+    
     train_concat = []
     ldict = {'ar':'Arabic', 'en':'Latin','no':'None','sy':"Symbols",'cn':'Chinese',
             'mx':'Mixed', 'jp':'Japanese','ko':'Korean','bg':'Bangla','hd':'Hindi',
@@ -151,16 +153,16 @@ def do_training(random_seed, data_dir, model_dir, device, image_size, input_size
 
     train_dataset = EASTDataset(train_dataset)
     num_train_batches = math.ceil(len(train_dataset) / train_batch_size)
-    train_loader = DataLoader(train_dataset, batch_size=train_batch_size, shuffle=True, num_workers=num_workers)
+    train_loader = DataLoader(train_dataset, batch_size=train_batch_size, shuffle=True, num_workers=num_workers,pin_memory=pin_memory)
     
     valid_dataset = EASTDataset(valid_dataset)
     num_valid_batches = math.ceil(len(valid_dataset) / valid_batch_size)
-    valid_loader = DataLoader(valid_dataset, batch_size=valid_batch_size, shuffle=True, num_workers=num_workers)
+    valid_loader = DataLoader(valid_dataset, batch_size=valid_batch_size, shuffle=True, num_workers=num_workers,pin_memory=pin_memory)
 
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     model = EAST()
-    model.load_state_dict(torch.load('./trained_models/ICDAR2019synko_ICDAR2019synen_divided_by_5_YOON_221213_023546/latest.pth', map_location='cpu'))
+    model.load_state_dict(torch.load('./trained_models/ICDAR17_19_ALL/best_loss.pth', map_location='cpu'))
     model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     scheduler = lr_scheduler.MultiStepLR(optimizer, milestones=[max_epoch // 2], gamma=0.1)

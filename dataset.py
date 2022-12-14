@@ -363,6 +363,7 @@ class SceneTextDataset(Dataset):
 
         self.image_size, self.crop_size = image_size, crop_size
         self.color_jitter, self.normalize = color_jitter, normalize
+        self.pin_memory = pin_memory
 
     def __len__(self):
         return len(self.image_fnames)
