@@ -21,7 +21,7 @@ from argparse import ArgumentParser
 
 import torch
 from torch import cuda
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader,ConcatDataset
 from torch.optim import lr_scheduler
 from tqdm import tqdm
 
@@ -112,8 +112,28 @@ def do_training(random_seed, data_dir, model_dir, device, image_size, input_size
                          "wandbproject":wandb_project,
                          "wandbentity":wandb_entity
                          })
+    # train_dataset_list = []
+    # train_dataset1 = SceneTextDataset(data_dir, split='train', image_size=image_size, crop_size=input_size)
+    # train_dataset_list.append(train_dataset1)
+    # train_dataset2 = SceneTextDataset('/opt/ml/input/data/ICDAR17_Korean', split='train', image_size=image_size, crop_size=input_size)
+    # train_dataset_list.append(train_dataset2)
     
+    # train_dataset = ConcatDataset(train_dataset_list)
+    # train_dataset = EASTDataset(train_dataset)
+    # num_train_batches = math.ceil(len(train_dataset) / train_batch_size)
+    # train_loader = DataLoader(train_dataset, batch_size=train_batch_size, shuffle=True, num_workers=num_workers)
+
+    # valid_dataset_list = []
+    # valid_dataset1= SceneTextDataset(data_dir, split='valid', image_size=image_size, crop_size=input_size)
+    # valid_dataset_list.append(valid_dataset1)
+    # valid_dataset2= SceneTextDataset('/opt/ml/input/data/ICDAR17_Korean', split='valid', image_size=image_size, crop_size=input_size)
+    # valid_dataset_list.append(valid_dataset2)
     
+    # valid_dataset = ConcatDataset(valid_dataset_list)
+    # valid_dataset = EASTDataset(valid_dataset)
+    # num_valid_batches = math.ceil(len(valid_dataset) / valid_batch_size)
+    # valid_loader = DataLoader(valid_dataset, batch_size=valid_batch_size, shuffle=True, num_workers=num_workers)
+
     train_dataset = SceneTextDataset(data_dir, split='train', image_size=image_size, crop_size=input_size)
     train_dataset = EASTDataset(train_dataset)
     num_train_batches = math.ceil(len(train_dataset) / train_batch_size)

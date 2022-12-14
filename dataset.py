@@ -360,7 +360,10 @@ def filter_vertices(vertices, labels, ignore_under=0, drop_under=0):
 
     return new_vertices, new_labels
 
-
+from straug.pattern import VGrid, HGrid, Grid, RectGrid, EllipseGrid
+from straug.camera import Contrast, Brightness, JpegCompression, Pixelate
+from straug.noise import GaussianNoise, ShotNoise, ImpulseNoise, SpeckleNoise
+from straug.process import Invert
 class SceneTextDataset(Dataset):
     def __init__(self, root_dir, split='train', image_size=1024, crop_size=512, color_jitter=True,
                  normalize=True):
@@ -401,6 +404,10 @@ class SceneTextDataset(Dataset):
         vertices, labels = filter_vertices(vertices, labels, ignore_under=10, drop_under=1)
 
         image = Image.open(image_fpath)
+        '''augmentation'''
+        image = Grid()(image)
+        #image = Brightness()(image,mag=2)
+        
         image, vertices = resize_img(image, vertices, self.image_size)
         image, vertices = adjust_height(image, vertices)
         image, vertices = rotate_img(image, vertices)
@@ -409,7 +416,7 @@ class SceneTextDataset(Dataset):
         if image.mode != 'RGB':
             image = image.convert('RGB')
         image = np.array(image)
-
+        
         funcs = []
         if self.color_jitter:
             funcs.append(A.ColorJitter(0.5, 0.5, 0.5, 0.25))
