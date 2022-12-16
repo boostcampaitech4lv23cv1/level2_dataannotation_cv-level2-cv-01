@@ -21,7 +21,7 @@ from argparse import ArgumentParser
 
 import torch
 from torch import cuda
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, ConcatDataset
 from torch.optim import lr_scheduler
 from tqdm import tqdm
 
@@ -48,7 +48,10 @@ def parse_args():
     
     # Conventional args
     parser.add_argument('--data_dir', type=str,
-                        default=os.environ.get('SM_CHANNEL_TRAIN', '../input/data/upstage'))
+                        default=os.environ.get('SM_CHANNEL_TRAIN', '../input/data'))
+
+    parser.add_argument('--data_format', nargs = '+', type=str, default='ICDAR17_Korean')
+
     parser.add_argument('--model_dir', type=str, default=os.environ.get('SM_MODEL_DIR',
                                                                         'trained_models'))
 
@@ -75,7 +78,7 @@ def parse_args():
     return args
 
 
-def do_training(random_seed, data_dir, model_dir, device, image_size, input_size, num_workers, 
+def do_training(random_seed, data_dir, data_format, model_dir, device, image_size, input_size, num_workers, 
                 train_batch_size, valid_batch_size,
                 learning_rate, max_epoch, save_interval, wandb_project, wandb_entity, wandb_run):
 
@@ -113,13 +116,28 @@ def do_training(random_seed, data_dir, model_dir, device, image_size, input_size
                          "wandbentity":wandb_entity
                          })
     
+    if len(data_format) == 1:
+        root_dir = osp.join(data_dir, data_format[0])
+        train_dataset = SceneTextDataset(root_dir, split='train_fold0', image_size=image_size, crop_size=input_size)
+        valid_dataset = SceneTextDataset(root_dir, split='valid_fold0', image_size=image_size, crop_size=input_size)
+    elif len(data_format) == 0:
+        raise ValueError
+    else:
+        train_dataset_list = []
+        valid_dataset_list = []
+        for format in data_format:
+            root_dir = osp.join(data_dir, format)
+            train_dataset_list.append(SceneTextDataset(root_dir, split='train', image_size=image_size, crop_size=input_size))
+            valid_dataset_list.append(SceneTextDataset(root_dir, split='valid', image_size=image_size, crop_size=input_size))
+        train_dataset = ConcatDataset(train_dataset_list)
+        valid_dataset = ConcatDataset(valid_dataset_list)
     
-    train_dataset = SceneTextDataset(data_dir, split='train', image_size=image_size, crop_size=input_size)
+    # train_dataset = SceneTextDataset(data_dir, split='train', image_size=image_size, crop_size=input_size)
     train_dataset = EASTDataset(train_dataset)
     num_train_batches = math.ceil(len(train_dataset) / train_batch_size)
     train_loader = DataLoader(train_dataset, batch_size=train_batch_size, shuffle=True, num_workers=num_workers)
 
-    valid_dataset = SceneTextDataset(data_dir, split='valid', image_size=image_size, crop_size=input_size)
+    # valid_dataset = SceneTextDataset(data_dir, split='valid', image_size=image_size, crop_size=input_size)
     valid_dataset = EASTDataset(valid_dataset)
     num_valid_batches = math.ceil(len(valid_dataset) / valid_batch_size)
     valid_loader = DataLoader(valid_dataset, batch_size=valid_batch_size, shuffle=True, num_workers=num_workers)
@@ -127,12 +145,12 @@ def do_training(random_seed, data_dir, model_dir, device, image_size, input_size
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     model = EAST()
     
-    model.load_state_dict(torch.load('/opt/ml/code/trained_models/ICDAR17_ICDAR19_TOTAL_valid_UPSTAGE_JUN_221212_150622/best_loss.pth', 
+    model.load_state_dict(torch.load('trained_models/unrealtext_best_loss.pth', 
                                      map_location='cpu'))
     
     model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
-    scheduler = lr_scheduler.MultiStepLR(optimizer, milestones=[max_epoch // 2], gamma=0.1)
+    scheduler = lr_scheduler.CosineAnnealingLR(optimizer, T_max = max_epoch)
 
     best_loss = 999999999
     best_hmean = -999999999
@@ -177,104 +195,107 @@ def do_training(random_seed, data_dir, model_dir, device, image_size, input_size
             f.write('TRAIN : Mean loss: {:.4f} | Logged time : {}'.format(
                 epoch_loss / num_train_batches, datetime.now(timezone('Asia/Seoul')).strftime('%H:%M:%S')))
 
-            gt_bboxes = []
-            pred_bboxes = []
-            trans = []
+            if (epoch+1) % 3 == 0:
+                gt_bboxes = []
+                pred_bboxes = []
+                trans = []
 
-            with torch.no_grad():
-                model.eval()
-                epoch_loss, epoch_start = 0, time.time()
-                with tqdm(total=num_valid_batches) as pbar:
-                    for img, gt_score_map, gt_geo_map, roi_mask in valid_loader:
-                        pbar.set_description('[Epoch VALID {}]'.format(epoch + 1))
+                with torch.no_grad():
+                    model.eval()
+                    epoch_loss, epoch_start = 0, time.time()
+                    with tqdm(total=num_valid_batches) as pbar:
+                        for img, gt_score_map, gt_geo_map, roi_mask in valid_loader:
+                            pbar.set_description('[Epoch VALID {}]'.format(epoch + 1))
 
-                        loss, extra_info = model.train_step(img, gt_score_map, gt_geo_map, roi_mask)
+                            loss, extra_info = model.train_step(img, gt_score_map, gt_geo_map, roi_mask)
 
-                        loss_valid = loss.item()
-                        epoch_loss += loss_valid
+                            loss_valid = loss.item()
+                            epoch_loss += loss_valid
 
-                        orig_sizes = []
-                        gt_bbox = []
-                        pred_bbox = []
-                        tran = []
-                        for i in img:
-                            orig_sizes.append(i.shape[1:3])
-                        
-                        for gt_score, gt_geo, pred_score, pred_geo, orig_size in zip(gt_score_map.numpy(), gt_geo_map.numpy(), extra_info['score_map'].cpu().numpy(), extra_info['geo_map'].cpu().numpy(), orig_sizes):
-                            gt_bbox_angle = get_bboxes(gt_score, gt_geo)
-                            pred_bbox_angle = get_bboxes(pred_score, pred_geo)
-                            if gt_bbox_angle is None:
-                                gt_bbox_angle = np.zeros((0, 4, 2), dtype = np.float32)
-                                tran_angle = []
-                            else:
-                                gt_bbox_angle = gt_bbox_angle[:, :8].reshape(-1, 4, 2)
-                                gt_bbox_angle *= max(orig_size) / input_size
-                                tran_angle = ['null' for _ in range(gt_bbox_angle.shape[0])]
-                            if pred_bbox_angle is None:
-                                pred_bbox_angle = np.zeros((0, 4, 2), dtype = np.float32)
-                            else:
-                                pred_bbox_angle = pred_bbox_angle[:, :8].reshape(-1, 4, 2)
-                                pred_bbox_angle *= max(orig_size) / input_size
+                            orig_sizes = []
+                            gt_bbox = []
+                            pred_bbox = []
+                            tran = []
+                            for i in img:
+                                orig_sizes.append(i.shape[1:3])
                             
-                            tran.append(tran_angle)
-                            gt_bbox.append(gt_bbox_angle)
-                            pred_bbox.append(pred_bbox_angle)
-                        
-                        gt_bboxes.extend(gt_bbox)
-                        pred_bboxes.extend(pred_bbox)
-                        trans.extend(tran)
-                        
-                        pbar.update(1)
-                        valid_dict = {
-                            'Cls loss': extra_info['cls_loss'], 'Angle loss': extra_info['angle_loss'],
-                            'IoU loss': extra_info['iou_loss']
-                        }
-                        pbar.set_postfix(valid_dict)
-            
-            pred_bboxes_dict= dict()
-            gt_bboxes_dict = dict() 
-            trans_dict = dict()
-            for img_num in range(len(valid_dataset)):
-                pred_bboxes_dict[f'img_{img_num}'] = pred_bboxes[img_num]
-                gt_bboxes_dict[f'img_{img_num}'] = gt_bboxes[img_num]
-                trans_dict[f'img_{img_num}'] = trans[img_num]
-            deteval_dict = calc_deteval_metrics(pred_bboxes_dict, gt_bboxes_dict, trans_dict)
-            metric_dict = deteval_dict['total']
-            precision = metric_dict['precision']
-            recall = metric_dict['recall']
-            hmean = metric_dict['hmean']
+                            for gt_score, gt_geo, pred_score, pred_geo, orig_size in zip(gt_score_map.numpy(), gt_geo_map.numpy(), extra_info['score_map'].cpu().numpy(), extra_info['geo_map'].cpu().numpy(), orig_sizes):
+                                gt_bbox_angle = get_bboxes(gt_score, gt_geo)
+                                pred_bbox_angle = get_bboxes(pred_score, pred_geo)
+                                if gt_bbox_angle is None:
+                                    gt_bbox_angle = np.zeros((0, 4, 2), dtype = np.float32)
+                                    tran_angle = []
+                                else:
+                                    gt_bbox_angle = gt_bbox_angle[:, :8].reshape(-1, 4, 2)
+                                    gt_bbox_angle *= max(orig_size) / input_size
+                                    tran_angle = ['null' for _ in range(gt_bbox_angle.shape[0])]
+                                if pred_bbox_angle is None:
+                                    pred_bbox_angle = np.zeros((0, 4, 2), dtype = np.float32)
+                                else:
+                                    pred_bbox_angle = pred_bbox_angle[:, :8].reshape(-1, 4, 2)
+                                    pred_bbox_angle *= max(orig_size) / input_size
+                                
+                                tran.append(tran_angle)
+                                gt_bbox.append(gt_bbox_angle)
+                                pred_bbox.append(pred_bbox_angle)
+                            
+                            gt_bboxes.extend(gt_bbox)
+                            pred_bboxes.extend(pred_bbox)
+                            trans.extend(tran)
+                            
+                            pbar.update(1)
+                            valid_dict = {
+                                'Cls loss': extra_info['cls_loss'], 'Angle loss': extra_info['angle_loss'],
+                                'IoU loss': extra_info['iou_loss']
+                            }
+                            pbar.set_postfix(valid_dict)
+                
+                pred_bboxes_dict= dict()
+                gt_bboxes_dict = dict() 
+                trans_dict = dict()
+                for img_num in range(len(valid_dataset)):
+                    pred_bboxes_dict[f'img_{img_num}'] = pred_bboxes[img_num]
+                    gt_bboxes_dict[f'img_{img_num}'] = gt_bboxes[img_num]
+                    trans_dict[f'img_{img_num}'] = trans[img_num]
+                deteval_dict = calc_deteval_metrics(pred_bboxes_dict, gt_bboxes_dict, trans_dict)
+                metric_dict = deteval_dict['total']
+                precision = metric_dict['precision']
+                recall = metric_dict['recall']
+                hmean = metric_dict['hmean']
 
-            wandb.log({"valid/Loss": epoch_loss / num_valid_batches,
-                    "valid/Cls_loss": extra_info['cls_loss'],
-                    "valid/Angle_loss": extra_info['angle_loss'],
-                    "valid/Iou_loss": extra_info['iou_loss'],
-                    "valid/precision": precision,
-                    "valid/recall": recall,
-                    "valid/hmean": hmean,
-                    })
+                wandb.log({"valid/Loss": epoch_loss / num_valid_batches,
+                        "valid/Cls_loss": extra_info['cls_loss'],
+                        "valid/Angle_loss": extra_info['angle_loss'],
+                        "valid/Iou_loss": extra_info['iou_loss'],
+                        "valid/precision": precision,
+                        "valid/recall": recall,
+                        "valid/hmean": hmean,
+                        })
 
-            f.write("[EPOCH VALID {:>03d}] Cls loss={:.4f}, Angle loss={:.4f}, IoU loss={:.4f}, Elapsed time: {}\n".format(
-                epoch+1, extra_info['cls_loss'], extra_info['angle_loss'], extra_info['iou_loss'], timedelta(seconds=time.time() - epoch_start)))
+                f.write("[EPOCH VALID {:>03d}] Cls loss={:.4f}, Angle loss={:.4f}, IoU loss={:.4f}, Elapsed time: {}\n".format(
+                    epoch+1, extra_info['cls_loss'], extra_info['angle_loss'], extra_info['iou_loss'], timedelta(seconds=time.time() - epoch_start)))
 
-            print('VALID : Mean loss: {:.4f} | Precision: {:.5f} | Recall: {:.5f} | Hmean : {:.5f} | Logged time : {}'.format(
-                epoch_loss / num_valid_batches, precision, recall, hmean, datetime.now(timezone('Asia/Seoul')).strftime('%H:%M:%S')))
-            
-            f.write('VALID : Mean loss: {:.4f} | Precision: {:.5f} | Recall: {:.5f} | Hmean : {:.5f} | Logged time : {}'.format(
-                epoch_loss / num_valid_batches, precision, recall, hmean, datetime.now(timezone('Asia/Seoul')).strftime('%H:%M:%S')))
+                print('VALID : Mean loss: {:.4f} | Precision: {:.5f} | Recall: {:.5f} | Hmean : {:.5f} | Logged time : {}'.format(
+                    epoch_loss / num_valid_batches, precision, recall, hmean, datetime.now(timezone('Asia/Seoul')).strftime('%H:%M:%S')))
+                
+                f.write('VALID : Mean loss: {:.4f} | Precision: {:.5f} | Recall: {:.5f} | Hmean : {:.5f} | Logged time : {}'.format(
+                    epoch_loss / num_valid_batches, precision, recall, hmean, datetime.now(timezone('Asia/Seoul')).strftime('%H:%M:%S')))
 
-            if best_hmean < hmean:
-                ckpt_fpath = osp.join(save_dir, 'best_hmean.pth')
+                if best_hmean < hmean:
+                    ckpt_fpath = osp.join(save_dir, 'best_hmean.pth')
+                    torch.save(model.state_dict(), ckpt_fpath)
+                    best_hmean = hmean
+
+                if best_loss > epoch_loss / num_valid_batches:
+                    ckpt_fpath = osp.join(save_dir, 'best_loss.pth')
+                    torch.save(model.state_dict(), ckpt_fpath)
+                    best_loss = epoch_loss / num_valid_batches
+
+                ckpt_fpath = osp.join(save_dir, f'latest_{epoch+1}epoch.pth')
                 torch.save(model.state_dict(), ckpt_fpath)
-                best_hmean = hmean
 
-            if best_loss > epoch_loss / num_valid_batches:
-                ckpt_fpath = osp.join(save_dir, 'best_loss.pth')
-                torch.save(model.state_dict(), ckpt_fpath)
-                best_loss = epoch_loss / num_valid_batches
-
-            if (epoch + 1) % save_interval == 0:
-                ckpt_fpath = osp.join(save_dir, 'latest.pth')
-                torch.save(model.state_dict(), ckpt_fpath)
+            ckpt_fpath = osp.join(save_dir, f'latest_every_{epoch + 1}epoch.pth')
+            torch.save(model.state_dict(), ckpt_fpath)
 
 def main(args):
     do_training(**args.__dict__)

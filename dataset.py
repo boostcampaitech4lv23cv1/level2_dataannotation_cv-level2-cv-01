@@ -362,19 +362,18 @@ def filter_vertices(vertices, labels, ignore_under=0, drop_under=0):
 
 
 class SceneTextDataset(Dataset):
-    def __init__(self, root_dir, split='train', image_size=1024, crop_size=512, color_jitter=True,
-                 normalize=True):
+    def __init__(self, root_dir, split='train', image_size=1024, crop_size=512):
         seed_everything()
 
         with open(osp.join(root_dir, 'ufo/{}.json'.format(split)), 'r') as f:
             anno = json.load(f)
 
         self.anno = anno
+        self.split = split
         self.image_fnames = sorted(anno['images'].keys())
         self.image_dir = osp.join(root_dir, 'images')
 
         self.image_size, self.crop_size = image_size, crop_size
-        self.color_jitter, self.normalize = color_jitter, normalize
 
     def __len__(self):
         return len(self.image_fnames)
@@ -401,20 +400,34 @@ class SceneTextDataset(Dataset):
         vertices, labels = filter_vertices(vertices, labels, ignore_under=10, drop_under=1)
 
         image = Image.open(image_fpath)
-        image, vertices = resize_img(image, vertices, self.image_size)
-        image, vertices = adjust_height(image, vertices)
-        image, vertices = rotate_img(image, vertices)
-        image, vertices = crop_img(image, vertices, labels, self.crop_size)
+        
+        if 'train' in self.split:
+            image, vertices = resize_img(image, vertices, self.image_size)
+            image, vertices = adjust_height(image, vertices)
+            image, vertices = rotate_img(image, vertices)
+            image, vertices = crop_img(image, vertices, labels, self.crop_size)
+        elif 'valid' in self.split:
+            image, vertices = resize_img(image, vertices, self.image_size)
+            image, vertices = crop_img(image, vertices, labels, self.image_size)
+        else:
+            raise ValueError
 
         if image.mode != 'RGB':
             image = image.convert('RGB')
         image = np.array(image)
 
         funcs = []
-        if self.color_jitter:
-            funcs.append(A.ColorJitter(0.5, 0.5, 0.5, 0.25))
-        if self.normalize:
-            funcs.append(A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)))
+
+        if 'train' in self.split:
+            funcs.append(A.GaussNoise())
+            funcs.append(A.RandomBrightnessContrast())
+            funcs.append(A.CLAHE())
+            funcs.append(A.Normalize())
+        elif 'valid' in self.split:
+            funcs.append(A.Normalize())
+        else:
+            raise ValueError
+
         transform = A.Compose(funcs)
 
         image = transform(image=image)['image']
