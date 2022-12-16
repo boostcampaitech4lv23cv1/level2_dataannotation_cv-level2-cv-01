@@ -405,7 +405,7 @@ class SceneTextDataset(Dataset):
 
         image = Image.open(image_fpath)
         '''augmentation'''
-        image = Grid()(image)
+        #image = RectGrid()(image,prob=0.5)
         #image = Brightness()(image,mag=2)
         
         image, vertices = resize_img(image, vertices, self.image_size)

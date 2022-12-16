@@ -31,6 +31,9 @@ from model import EAST
 from detect import get_bboxes
 from deteval import calc_deteval_metrics
 
+# from torch.cuda.amp import autocast
+# from torch.cuda.amp import GradScaler
+# scaler = GradScaler()
 def seed_everything(seed=2022):
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
@@ -61,7 +64,7 @@ def parse_args():
     parser.add_argument('--valid_batch_size', type=int, default=32)
     parser.add_argument('--learning_rate', type=float, default=1e-3)
     parser.add_argument('--max_epoch', type=int, default=200)
-    parser.add_argument('--save_interval', type=int, default=1)
+    parser.add_argument('--save_interval', type=int, default=2)
 
     parser.add_argument('--wandb_project', type=str, default='bc_cv01-data_annotation')
     parser.add_argument('--wandb_entity', type=str, default='bc_cv01-data_annotation')
@@ -112,42 +115,63 @@ def do_training(random_seed, data_dir, model_dir, device, image_size, input_size
                          "wandbproject":wandb_project,
                          "wandbentity":wandb_entity
                          })
-    # train_dataset_list = []
-    # train_dataset1 = SceneTextDataset(data_dir, split='train', image_size=image_size, crop_size=input_size)
+    train_dataset_list = []
+    # train_dataset1 = SceneTextDataset('/opt/ml/input/data/SYNTH/sub_0', split='sub_0', image_size=image_size, crop_size=input_size)
     # train_dataset_list.append(train_dataset1)
-    # train_dataset2 = SceneTextDataset('/opt/ml/input/data/ICDAR17_Korean', split='train', image_size=image_size, crop_size=input_size)
-    # train_dataset_list.append(train_dataset2)
+    # train_dataset1 = SceneTextDataset('/opt/ml/input/data/SYNTH/sub_1', split='sub_1', image_size=image_size, crop_size=input_size)
+    # train_dataset_list.append(train_dataset1)
+    train_dataset1 = SceneTextDataset('/opt/ml/input/data/SYNTH/sub_68', split='sub_68', image_size=image_size, crop_size=input_size)
+    train_dataset_list.append(train_dataset1)
+    # train_dataset3 = SceneTextDataset('/opt/ml/input/data/SYNTH/sub_67', split='sub_67', image_size=image_size, crop_size=input_size)
+    # train_dataset_list.append(train_dataset3)
+    # train_dataset4 = SceneTextDataset('/opt/ml/input/data/SYNTH/sub_68', split='sub_68', image_size=image_size, crop_size=input_size)
+    # train_dataset_list.append(train_dataset4)
+    # train_dataset5 = SceneTextDataset('/opt/ml/input/data/SYNTH/sub_69', split='sub_69', image_size=image_size, crop_size=input_size)
+    # train_dataset_list.append(train_dataset5)
+    #train_dataset6 = SceneTextDataset('/opt/ml/input/data/SYNTH/sub_70', split='sub_70', image_size=image_size, crop_size=input_size)
+    #train_dataset_list.append(train_dataset6)
     
-    # train_dataset = ConcatDataset(train_dataset_list)
-    # train_dataset = EASTDataset(train_dataset)
-    # num_train_batches = math.ceil(len(train_dataset) / train_batch_size)
-    # train_loader = DataLoader(train_dataset, batch_size=train_batch_size, shuffle=True, num_workers=num_workers)
-
-    # valid_dataset_list = []
-    # valid_dataset1= SceneTextDataset(data_dir, split='valid', image_size=image_size, crop_size=input_size)
-    # valid_dataset_list.append(valid_dataset1)
-    # valid_dataset2= SceneTextDataset('/opt/ml/input/data/ICDAR17_Korean', split='valid', image_size=image_size, crop_size=input_size)
-    # valid_dataset_list.append(valid_dataset2)
+    # train_dataset1 = SceneTextDataset('/opt/ml/input/data/ICDAR15/ICDAR15_train', split='ICDAR15_train', image_size=image_size, crop_size=input_size)
+    # train_dataset_list.append(train_dataset1)
+    train_dataset2 = SceneTextDataset('/opt/ml/input/data/ICDAR17_Korean', split='train', image_size=image_size, crop_size=input_size)
+    train_dataset_list.append(train_dataset2)
+    train_dataset3 = SceneTextDataset('/opt/ml/input/data/upstage', split='train', image_size=image_size, crop_size=input_size)
+    train_dataset_list.append(train_dataset3)
+    train_dataset = ConcatDataset(train_dataset_list)
     
-    # valid_dataset = ConcatDataset(valid_dataset_list)
-    # valid_dataset = EASTDataset(valid_dataset)
-    # num_valid_batches = math.ceil(len(valid_dataset) / valid_batch_size)
-    # valid_loader = DataLoader(valid_dataset, batch_size=valid_batch_size, shuffle=True, num_workers=num_workers)
-
-    train_dataset = SceneTextDataset(data_dir, split='train', image_size=image_size, crop_size=input_size)
+    #train_dataset = SceneTextDataset('/opt/ml/input/data/ICDAR17_Korean', split='train', image_size=image_size, crop_size=input_size)
     train_dataset = EASTDataset(train_dataset)
     num_train_batches = math.ceil(len(train_dataset) / train_batch_size)
     train_loader = DataLoader(train_dataset, batch_size=train_batch_size, shuffle=True, num_workers=num_workers)
 
-    valid_dataset = SceneTextDataset(data_dir, split='valid', image_size=image_size, crop_size=input_size)
+    valid_dataset_list = []
+    # valid_dataset1= SceneTextDataset('/opt/ml/input/data/ICDAR15/ICDAR15_test', split='ICDAR15_test', image_size=image_size, crop_size=input_size)
+    # valid_dataset_list.append(valid_dataset1)
+    valid_dataset2= SceneTextDataset('/opt/ml/input/data/ICDAR17_Korean', split='valid', image_size=image_size, crop_size=input_size)
+    valid_dataset_list.append(valid_dataset2)
+    valid_dataset3= SceneTextDataset('/opt/ml/input/data/upstage', split='valid', image_size=image_size, crop_size=input_size)
+    valid_dataset_list.append(valid_dataset3)
+    valid_dataset = ConcatDataset(valid_dataset_list)
+    #valid_dataset= SceneTextDataset('/opt/ml/input/data/ICDAR17_Korean', split='valid', image_size=image_size, crop_size=input_size)
     valid_dataset = EASTDataset(valid_dataset)
     num_valid_batches = math.ceil(len(valid_dataset) / valid_batch_size)
     valid_loader = DataLoader(valid_dataset, batch_size=valid_batch_size, shuffle=True, num_workers=num_workers)
+    #valid_dataset= SceneTextDataset('/opt/ml/input/data/SYNTH/sub_71', split='sub_71', image_size=image_size, crop_size=input_size)
+
+    # train_dataset = SceneTextDataset(data_dir, split='train', image_size=image_size, crop_size=input_size)
+    # train_dataset = EASTDataset(train_dataset)
+    # num_train_batches = math.ceil(len(train_dataset) / train_batch_size)
+    # train_loader = DataLoader(train_dataset, batch_size=train_batch_size, shuffle=True, num_workers=num_workers)
+
+    # valid_dataset = SceneTextDataset(data_dir, split='valid', image_size=image_size, crop_size=input_size)
+    # valid_dataset = EASTDataset(valid_dataset)
+    # num_valid_batches = math.ceil(len(valid_dataset) / valid_batch_size)
+    # valid_loader = DataLoader(valid_dataset, batch_size=valid_batch_size, shuffle=True, num_workers=num_workers)
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     model = EAST()
     
-    model.load_state_dict(torch.load('/opt/ml/code/trained_models/ICDAR17_ICDAR19_TOTAL_valid_UPSTAGE_JUN_221212_150622/best_loss.pth', 
+    model.load_state_dict(torch.load('/opt/ml/code/trained_models/pretrained_UPSTAGEandICDARko_resize1024_crop512_batch16_lr1e4_JUN_221213_193033/best_hmean.pth', 
                                      map_location='cpu'))
     
     model.to(device)
@@ -167,6 +191,9 @@ def do_training(random_seed, data_dir, model_dir, device, image_size, input_size
 
                     loss, extra_info = model.train_step(img, gt_score_map, gt_geo_map, roi_mask)
                     optimizer.zero_grad()
+                    
+
+                        
                     loss.backward()
                     optimizer.step()
 
@@ -196,101 +223,102 @@ def do_training(random_seed, data_dir, model_dir, device, image_size, input_size
             
             f.write('TRAIN : Mean loss: {:.4f} | Logged time : {}'.format(
                 epoch_loss / num_train_batches, datetime.now(timezone('Asia/Seoul')).strftime('%H:%M:%S')))
+            
+            if True : 
+                gt_bboxes = []
+                pred_bboxes = []
+                trans = []
 
-            gt_bboxes = []
-            pred_bboxes = []
-            trans = []
+                with torch.no_grad():
+                    model.eval()
+                    epoch_loss, epoch_start = 0, time.time()
+                    with tqdm(total=num_valid_batches) as pbar:
+                        for img, gt_score_map, gt_geo_map, roi_mask in valid_loader:
+                            pbar.set_description('[Epoch VALID {}]'.format(epoch + 1))
 
-            with torch.no_grad():
-                model.eval()
-                epoch_loss, epoch_start = 0, time.time()
-                with tqdm(total=num_valid_batches) as pbar:
-                    for img, gt_score_map, gt_geo_map, roi_mask in valid_loader:
-                        pbar.set_description('[Epoch VALID {}]'.format(epoch + 1))
+                            loss, extra_info = model.train_step(img, gt_score_map, gt_geo_map, roi_mask)
 
-                        loss, extra_info = model.train_step(img, gt_score_map, gt_geo_map, roi_mask)
+                            loss_valid = loss.item()
+                            epoch_loss += loss_valid
 
-                        loss_valid = loss.item()
-                        epoch_loss += loss_valid
-
-                        orig_sizes = []
-                        gt_bbox = []
-                        pred_bbox = []
-                        tran = []
-                        for i in img:
-                            orig_sizes.append(i.shape[1:3])
-                        
-                        for gt_score, gt_geo, pred_score, pred_geo, orig_size in zip(gt_score_map.numpy(), gt_geo_map.numpy(), extra_info['score_map'].cpu().numpy(), extra_info['geo_map'].cpu().numpy(), orig_sizes):
-                            gt_bbox_angle = get_bboxes(gt_score, gt_geo)
-                            pred_bbox_angle = get_bboxes(pred_score, pred_geo)
-                            if gt_bbox_angle is None:
-                                gt_bbox_angle = np.zeros((0, 4, 2), dtype = np.float32)
-                                tran_angle = []
-                            else:
-                                gt_bbox_angle = gt_bbox_angle[:, :8].reshape(-1, 4, 2)
-                                gt_bbox_angle *= max(orig_size) / input_size
-                                tran_angle = ['null' for _ in range(gt_bbox_angle.shape[0])]
-                            if pred_bbox_angle is None:
-                                pred_bbox_angle = np.zeros((0, 4, 2), dtype = np.float32)
-                            else:
-                                pred_bbox_angle = pred_bbox_angle[:, :8].reshape(-1, 4, 2)
-                                pred_bbox_angle *= max(orig_size) / input_size
+                            orig_sizes = []
+                            gt_bbox = []
+                            pred_bbox = []
+                            tran = []
+                            for i in img:
+                                orig_sizes.append(i.shape[1:3])
                             
-                            tran.append(tran_angle)
-                            gt_bbox.append(gt_bbox_angle)
-                            pred_bbox.append(pred_bbox_angle)
-                        
-                        gt_bboxes.extend(gt_bbox)
-                        pred_bboxes.extend(pred_bbox)
-                        trans.extend(tran)
-                        
-                        pbar.update(1)
-                        valid_dict = {
-                            'Cls loss': extra_info['cls_loss'], 'Angle loss': extra_info['angle_loss'],
-                            'IoU loss': extra_info['iou_loss']
-                        }
-                        pbar.set_postfix(valid_dict)
-            
-            pred_bboxes_dict= dict()
-            gt_bboxes_dict = dict() 
-            trans_dict = dict()
-            for img_num in range(len(valid_dataset)):
-                pred_bboxes_dict[f'img_{img_num}'] = pred_bboxes[img_num]
-                gt_bboxes_dict[f'img_{img_num}'] = gt_bboxes[img_num]
-                trans_dict[f'img_{img_num}'] = trans[img_num]
-            deteval_dict = calc_deteval_metrics(pred_bboxes_dict, gt_bboxes_dict, trans_dict)
-            metric_dict = deteval_dict['total']
-            precision = metric_dict['precision']
-            recall = metric_dict['recall']
-            hmean = metric_dict['hmean']
+                            for gt_score, gt_geo, pred_score, pred_geo, orig_size in zip(gt_score_map.numpy(), gt_geo_map.numpy(), extra_info['score_map'].cpu().numpy(), extra_info['geo_map'].cpu().numpy(), orig_sizes):
+                                gt_bbox_angle = get_bboxes(gt_score, gt_geo)
+                                pred_bbox_angle = get_bboxes(pred_score, pred_geo)
+                                if gt_bbox_angle is None:
+                                    gt_bbox_angle = np.zeros((0, 4, 2), dtype = np.float32)
+                                    tran_angle = []
+                                else:
+                                    gt_bbox_angle = gt_bbox_angle[:, :8].reshape(-1, 4, 2)
+                                    gt_bbox_angle *= max(orig_size) / input_size
+                                    tran_angle = ['null' for _ in range(gt_bbox_angle.shape[0])]
+                                if pred_bbox_angle is None:
+                                    pred_bbox_angle = np.zeros((0, 4, 2), dtype = np.float32)
+                                else:
+                                    pred_bbox_angle = pred_bbox_angle[:, :8].reshape(-1, 4, 2)
+                                    pred_bbox_angle *= max(orig_size) / input_size
+                                
+                                tran.append(tran_angle)
+                                gt_bbox.append(gt_bbox_angle)
+                                pred_bbox.append(pred_bbox_angle)
+                            
+                            gt_bboxes.extend(gt_bbox)
+                            pred_bboxes.extend(pred_bbox)
+                            trans.extend(tran)
+                            
+                            pbar.update(1)
+                            valid_dict = {
+                                'Cls loss': extra_info['cls_loss'], 'Angle loss': extra_info['angle_loss'],
+                                'IoU loss': extra_info['iou_loss']
+                            }
+                            pbar.set_postfix(valid_dict)
+                
+                pred_bboxes_dict= dict()
+                gt_bboxes_dict = dict() 
+                trans_dict = dict()
+                for img_num in range(len(valid_dataset)):
+                    pred_bboxes_dict[f'img_{img_num}'] = pred_bboxes[img_num]
+                    gt_bboxes_dict[f'img_{img_num}'] = gt_bboxes[img_num]
+                    trans_dict[f'img_{img_num}'] = trans[img_num]
+                deteval_dict = calc_deteval_metrics(pred_bboxes_dict, gt_bboxes_dict, trans_dict)
+                metric_dict = deteval_dict['total']
+                precision = metric_dict['precision']
+                recall = metric_dict['recall']
+                hmean = metric_dict['hmean']
 
-            wandb.log({"valid/Loss": epoch_loss / num_valid_batches,
-                    "valid/Cls_loss": extra_info['cls_loss'],
-                    "valid/Angle_loss": extra_info['angle_loss'],
-                    "valid/Iou_loss": extra_info['iou_loss'],
-                    "valid/precision": precision,
-                    "valid/recall": recall,
-                    "valid/hmean": hmean,
-                    })
+                wandb.log({"valid/Loss": epoch_loss / num_valid_batches,
+                        "valid/Cls_loss": extra_info['cls_loss'],
+                        "valid/Angle_loss": extra_info['angle_loss'],
+                        "valid/Iou_loss": extra_info['iou_loss'],
+                        "valid/precision": precision,
+                        "valid/recall": recall,
+                        "valid/hmean": hmean,
+                        })
 
-            f.write("[EPOCH VALID {:>03d}] Cls loss={:.4f}, Angle loss={:.4f}, IoU loss={:.4f}, Elapsed time: {}\n".format(
-                epoch+1, extra_info['cls_loss'], extra_info['angle_loss'], extra_info['iou_loss'], timedelta(seconds=time.time() - epoch_start)))
+                f.write("[EPOCH VALID {:>03d}] Cls loss={:.4f}, Angle loss={:.4f}, IoU loss={:.4f}, Elapsed time: {}\n".format(
+                    epoch+1, extra_info['cls_loss'], extra_info['angle_loss'], extra_info['iou_loss'], timedelta(seconds=time.time() - epoch_start)))
 
-            print('VALID : Mean loss: {:.4f} | Precision: {:.5f} | Recall: {:.5f} | Hmean : {:.5f} | Logged time : {}'.format(
-                epoch_loss / num_valid_batches, precision, recall, hmean, datetime.now(timezone('Asia/Seoul')).strftime('%H:%M:%S')))
-            
-            f.write('VALID : Mean loss: {:.4f} | Precision: {:.5f} | Recall: {:.5f} | Hmean : {:.5f} | Logged time : {}'.format(
-                epoch_loss / num_valid_batches, precision, recall, hmean, datetime.now(timezone('Asia/Seoul')).strftime('%H:%M:%S')))
+                print('VALID : Mean loss: {:.4f} | Precision: {:.5f} | Recall: {:.5f} | Hmean : {:.5f} | Logged time : {}'.format(
+                    epoch_loss / num_valid_batches, precision, recall, hmean, datetime.now(timezone('Asia/Seoul')).strftime('%H:%M:%S')))
+                
+                f.write('VALID : Mean loss: {:.4f} | Precision: {:.5f} | Recall: {:.5f} | Hmean : {:.5f} | Logged time : {}'.format(
+                    epoch_loss / num_valid_batches, precision, recall, hmean, datetime.now(timezone('Asia/Seoul')).strftime('%H:%M:%S')))
 
-            if best_hmean < hmean:
-                ckpt_fpath = osp.join(save_dir, 'best_hmean.pth')
-                torch.save(model.state_dict(), ckpt_fpath)
-                best_hmean = hmean
+                if best_hmean < hmean:
+                    ckpt_fpath = osp.join(save_dir, 'best_hmean.pth')
+                    torch.save(model.state_dict(), ckpt_fpath)
+                    best_hmean = hmean
 
-            if best_loss > epoch_loss / num_valid_batches:
-                ckpt_fpath = osp.join(save_dir, 'best_loss.pth')
-                torch.save(model.state_dict(), ckpt_fpath)
-                best_loss = epoch_loss / num_valid_batches
+                if best_loss > epoch_loss / num_valid_batches:
+                    ckpt_fpath = osp.join(save_dir, 'best_loss.pth')
+                    torch.save(model.state_dict(), ckpt_fpath)
+                    best_loss = epoch_loss / num_valid_batches
 
             if (epoch + 1) % save_interval == 0:
                 ckpt_fpath = osp.join(save_dir, 'latest.pth')
