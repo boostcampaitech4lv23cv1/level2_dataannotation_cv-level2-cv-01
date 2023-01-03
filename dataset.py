@@ -1,6 +1,7 @@
 import os.path as osp
 import math
 import json
+import random
 from PIL import Image
 
 import torch
@@ -10,6 +11,14 @@ import albumentations as A
 from torch.utils.data import Dataset
 from shapely.geometry import Polygon
 
+def seed_everything(seed=2022):
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)  # if use multi-GPU
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    np.random.seed(seed)
+    random.seed(seed)
 
 def cal_distance(x1, y1, x2, y2):
     '''calculate the Euclidean distance'''
@@ -196,6 +205,8 @@ def crop_img(img, vertices, labels, length):
         region      : cropped image region
         new_vertices: new vertices in cropped region
     '''
+    seed_everything()
+
     h, w = img.height, img.width
     # confirm the shortest side of image >= length
     if h >= w and w < length:
@@ -215,12 +226,25 @@ def crop_img(img, vertices, labels, length):
     remain_h = img.height - length
     remain_w = img.width - length
     flag = True
-    cnt = 0
-    while flag and cnt < 1000:
-        cnt += 1
+    # cnt = 0
+    # while flag and cnt < 1000:
+    #     cnt += 1
+    if len(labels) == 0:
         start_w = int(np.random.rand() * remain_w)
         start_h = int(np.random.rand() * remain_h)
-        flag = is_cross_text([start_w, start_h], length, new_vertices[labels==1,:])
+        #flag = is_cross_text([start_w, start_h], length, new_vertices[labels==1,:])
+        flag = False
+    else:
+        cnt = 0
+        while flag and cnt < 1000:
+            cnt += 1
+            start_w = int(np.random.rand() * remain_w)
+            start_h = int(np.random.rand() * remain_h)
+            flag = is_cross_text([start_w, start_h], length, new_vertices[labels==1,:])
+    
+    # if flag:
+    #     print('WARNING! Cropped image crosses word regions!')
+
     box = (start_w, start_h, start_w + length, start_h + length)
     region = img.crop(box)
     if new_vertices.size == 0:
@@ -276,6 +300,8 @@ def adjust_height(img, vertices, ratio=0.2):
         img         : adjusted PIL Image
         new_vertices: adjusted vertices
     '''
+    seed_everything()
+
     ratio_h = 1 + ratio * (np.random.rand() * 2 - 1)
     old_h = img.height
     new_h = int(np.around(old_h * ratio_h))
@@ -297,6 +323,8 @@ def rotate_img(img, vertices, angle_range=10):
         img         : rotated PIL Image
         new_vertices: rotated vertices
     '''
+    seed_everything()
+
     center_x = (img.width - 1) / 2
     center_y = (img.height - 1) / 2
     angle = angle_range * (np.random.rand() * 2 - 1)
@@ -336,6 +364,8 @@ def filter_vertices(vertices, labels, ignore_under=0, drop_under=0):
 class SceneTextDataset(Dataset):
     def __init__(self, root_dir, split='train', image_size=1024, crop_size=512, color_jitter=True,
                  normalize=True):
+        seed_everything()
+
         with open(osp.join(root_dir, 'ufo/{}.json'.format(split)), 'r') as f:
             anno = json.load(f)
 
@@ -355,7 +385,16 @@ class SceneTextDataset(Dataset):
 
         vertices, labels = [], []
         for word_info in self.anno['images'][image_fname]['words'].values():
-            vertices.append(np.array(word_info['points']).flatten())
+            #vertices.append(np.array(word_info['points']).flatten())
+            ver = word_info['points']
+            ver_flat = np.array(ver).flatten()
+            if len(ver_flat) != 8:
+                x_min = np.array(ver)[:, 0].min()
+                y_min = np.array(ver)[:, 1].min()
+                x_max = np.array(ver)[:, 0].max()
+                y_max = np.array(ver)[:, 1].max()
+                ver_flat = np.array([x_min, y_max, x_max, y_max, x_max, y_min, x_min, y_min])
+            vertices.append(ver_flat)
             labels.append(int(not word_info['illegibility']))
         vertices, labels = np.array(vertices, dtype=np.float32), np.array(labels, dtype=np.int64)
 
@@ -375,7 +414,7 @@ class SceneTextDataset(Dataset):
         if self.color_jitter:
             funcs.append(A.ColorJitter(0.5, 0.5, 0.5, 0.25))
         if self.normalize:
-            funcs.append(A.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5)))
+            funcs.append(A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)))
         transform = A.Compose(funcs)
 
         image = transform(image=image)['image']
